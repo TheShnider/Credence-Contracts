@@ -70,6 +70,25 @@ Creates a standard or rolling bond. Transfers tokens from the identity to the co
 
 * **Params**: `identity`, `amount`, `duration`, `is_rolling`, `notice_period_duration`.
 
+#### Input Constraints
+
+All parameters are validated before the bond is created. Every violation returns a typed
+`ContractError` — no panics are used.
+
+| Parameter | Constraint | Error (code) |
+|-----------|-----------|--------------|
+| `amount: i128` | Must be strictly positive (`> 0`) | `InvalidBondAmount` (214) |
+| `duration: u64` | Must be strictly positive (`> 0`) | `InvalidBondDuration` (215) |
+| `notice_period_duration: u64` | When `is_rolling = true`: must be `> 0` | `InvalidNoticePeriod` (216) |
+| `notice_period_duration: u64` | When `is_rolling = true`: must be `<= duration` | `InvalidNoticePeriod` (216) |
+| `bond_start + duration` | Must not overflow `u64` | `Overflow` (700) |
+
+Checks are applied in the order listed above, so the first violated constraint is the one
+reported. For non-rolling bonds, `notice_period_duration` is stored but not validated.
+
+> See [`contracts/credence_bond/docs/bond-input-constraints.md`](../contracts/credence_bond/docs/bond-input-constraints.md)
+> for the full constraint reference including boundary examples and security notes.
+
 ### `top_up(e: Env, amount: i128)`
 
 Increases the stake of an existing bond to reach a higher `BondTier`.

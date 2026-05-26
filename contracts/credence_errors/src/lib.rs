@@ -189,6 +189,22 @@ pub enum ContractError {
     /// Contracts: bond, dispute_resolution, fixed_duration_bond
     UnsupportedToken = 213,
 
+    /// Bond amount must be strictly positive (> 0).
+    /// Triggered by: create_bond called with amount <= 0
+    /// Contracts: bond
+    InvalidBondAmount = 214,
+
+    /// Bond duration must be strictly positive (> 0).
+    /// Triggered by: create_bond called with duration == 0
+    /// Contracts: bond
+    InvalidBondDuration = 215,
+
+    /// Rolling-bond notice_period_duration must be > 0 and <= duration.
+    /// Triggered by: create_bond called with is_rolling=true and notice_period_duration == 0
+    ///               or notice_period_duration > duration
+    /// Contracts: bond
+    InvalidNoticePeriod = 216,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -358,7 +374,10 @@ impl ErrorExt for ContractError {
             | ContractError::EarlyExitConfigNotSet
             | ContractError::InvalidPenaltyBps
             | ContractError::LeverageExceeded
-            | ContractError::UnsupportedToken => ErrorCategory::Bond,
+            | ContractError::UnsupportedToken
+            | ContractError::InvalidBondAmount
+            | ContractError::InvalidBondDuration
+            | ContractError::InvalidNoticePeriod => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -424,6 +443,9 @@ impl ErrorExt for ContractError {
             ContractError::InvalidPenaltyBps => "Penalty bps must be in range 0-10000",
             ContractError::LeverageExceeded => "Resulting leverage exceeds the configured maximum",
             ContractError::UnsupportedToken => "Token transfer resulted in different amount than requested (fee-on-transfer tokens not supported)",
+            ContractError::InvalidBondAmount => "Bond amount must be strictly positive (> 0)",
+            ContractError::InvalidBondDuration => "Bond duration must be strictly positive (> 0)",
+            ContractError::InvalidNoticePeriod => "Rolling-bond notice_period_duration must be > 0 and <= duration",
             ContractError::DuplicateAttestation => "Attestation already exists from this attester",
             ContractError::AttestationNotFound => "No attestation found for the given key",
             ContractError::AttestationAlreadyRevoked => "Attestation has already been revoked",
