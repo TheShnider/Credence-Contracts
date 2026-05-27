@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, panic_with_error};
 use credence_errors::ContractError;
 
 mod events;
@@ -26,8 +26,9 @@ pub struct Bond {
     pub is_rolling: bool,
     /// Notice period for rolling-bond withdrawals.
     pub notice_period_duration: u64,
-    /// Cooldown period for withdrawal safety.
-    pub cooldown: u64,
+    pub slashed_amount: i128,
+    pub withdrawal_requested_at: u64,
+    pub active: bool,
 }
 
 #[contract]
@@ -35,6 +36,14 @@ pub struct CredenceBond;
 
 #[contractimpl]
 impl CredenceBond {
+    pub fn initialize(e: Env, admin: Address, token: Address) {
+        if storage::get_admin(&e).is_some() {
+            panic!("already initialized");
+        }
+        storage::set_admin(&e, &admin);
+        storage::set_token(&e, &token);
+    }
+
     /// Creates and persists a new bond for an identity.
     pub fn create_bond(
         e: Env,
@@ -43,7 +52,6 @@ impl CredenceBond {
         duration: u64,
         is_rolling: bool,
         notice_period_duration: u64,
-        cooldown: u64,
     ) -> Result<Bond, ContractError> {
         identity.require_auth();
 
@@ -58,7 +66,6 @@ impl CredenceBond {
             duration,
             is_rolling,
             notice_period_duration,
-            cooldown,
         )?;
 
         // Safe token transfer in from the user
@@ -101,6 +108,72 @@ impl CredenceBond {
         events::emit_duration_extended_v2(&e, &identity, bond.duration, e.ledger().timestamp());
         Ok(())
     }
+
+    pub fn request_withdrawal(e: Env, identity: Address) -> Result<(), ContractError> {
+        identity.require_auth();
+        let mut bond = storage::get_bond(&e, &identity)?;
+        if !bond.is_rolling {
+            return Err(ContractError::NotRollingBond);
+        }
+        if bond.withdrawal_requested_at != 0 {
+            return Err(ContractError::WithdrawalAlreadyRequested);
+        }
+        bond.withdrawal_requested_at = e.ledger().timestamp();
+        storage::set_bond(&e, &identity, &bond);
+        Ok(())
+    }
+
+    pub fn withdraw(e: Env, identity: Address, amount: i128) -> Result<(), ContractError> {
+        identity.require_auth();
+        acquire_lock(&e);
+        
+        let mut bond = storage::get_bond(&e, &identity)?;
+        let now = e.ledger().timestamp();
+
+        if bond.is_rolling {
+            if bond.withdrawal_requested_at == 0 { panic!("notice not started"); }
+            if now < bond.withdrawal_requested_at + bond.notice_period_duration {
+                panic!("notice period not elapsed");
+            }
+        } else if now < bond.bond_start + bond.duration {
+            return Err(ContractError::LockupNotExpired);
+        }
+
+        let available = bond.amount - bond.slashed_amount;
+        if amount > available { return Err(ContractError::InsufficientBalance); }
+
+        bond.amount = bond.amount.checked_sub(amount).ok_or(ContractError::Underflow)?;
+        storage::set_bond(&e, &identity, &bond);
+        
+        safe_token::transfer_out(&e, &identity, amount);
+        events::emit_withdrawal_v2(&e, &identity, amount, bond.amount, now);
+        
+        release_lock(&e);
+        Ok(())
+    }
+
+    pub fn slash(e: Env, admin: Address, identity: Address, amount: i128) -> Result<(), ContractError> {
+        admin.require_auth();
+        if Some(admin) != storage::get_admin(&e) { return Err(ContractError::NotAdmin); }
+
+        let mut bond = storage::get_bond(&e, &identity)?;
+        let new_slashed = bond.slashed_amount.checked_add(amount).ok_or(ContractError::Overflow)?;
+        
+        bond.slashed_amount = if new_slashed > bond.amount { bond.amount } else { new_slashed };
+        storage::set_bond(&e, &identity, &bond);
+        
+        events::emit_bond_slashed_v2(&e, &identity, amount, bond.slashed_amount, e.ledger().timestamp());
+        Ok(())
+    }
+}
+
+fn acquire_lock(e: &Env) {
+    if storage::is_locked(e) { panic_with_error!(e, ContractError::ReentrancyDetected); }
+    storage::set_lock(e, true);
+}
+
+fn release_lock(e: &Env) {
+    storage::set_lock(e, false);
 }
 
 /// Internal validator for bond construction.
@@ -111,7 +184,6 @@ fn validate_and_create_bond_struct(
     duration: u64,
     is_rolling: bool,
     notice_period_duration: u64,
-    cooldown: u64,
 ) -> Result<Bond, ContractError> {
     if !is_valid_bond(amount) {
         return Err(ContractError::InvalidBondAmount);

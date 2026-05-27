@@ -7,6 +7,20 @@ pub fn emit_bond_created_v2(e: &Env, identity: &Address, amount: i128, duration:
     );
 }
 
+pub fn emit_bond_slashed_v2(e: &Env, identity: &Address, amount: i128, total_slashed: i128, timestamp: u64) {
+    e.events().publish(
+        (symbol_short!("bond_s2"), identity),
+        (amount, total_slashed, timestamp)
+    );
+}
+
+pub fn emit_withdrawal_v2(e: &Env, identity: &Address, amount: i128, remaining: i128, timestamp: u64) {
+    e.events().publish(
+        (symbol_short!("bond_w2"), identity),
+        (amount, remaining, timestamp)
+    );
+}
+
 pub fn emit_bond_increased_v2(e: &Env, identity: &Address, added_amount: i128, total_balance: i128, timestamp: u64) {
     e.events().publish(
         (symbol_short!("bond_i2"), identity),
