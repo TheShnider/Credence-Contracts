@@ -4,7 +4,11 @@ Attestation value depends on the attester's credibility (stake). Weight is deriv
 
 ## Config
 
-- **set_weight_config(admin, multiplier_bps, max_weight)** — Admin only. `multiplier_bps` is in basis points (e.g. 100 = 1%); weight = stake * multiplier_bps / 10_000, capped at `max_weight` and at protocol MAX_ATTESTATION_WEIGHT.
+- **set_weight_config(admin, multiplier_bps, max_weight)** — Admin only.
+  - `multiplier_bps` is in basis points (e.g. 100 = 1%).
+  - `multiplier_bps` is bounded to 10_000 (100%) to prevent runaway multiplier amplification.
+  - `max_weight` is bounded to `MAX_ATTESTATION_WEIGHT`.
+  - Emits `weight_config_set(old_multiplier_bps, old_max_weight, multiplier_bps, max_weight)`.
 - **get_weight_config()** — Returns (multiplier_bps, max_weight).
 
 ## Attester stake
@@ -15,7 +19,9 @@ Attestation value depends on the attester's credibility (stake). Weight is deriv
 
 ## Weight computation
 
-- When adding an attestation, weight = min(stake * multiplier_bps / 10_000, max_weight, MAX_ATTESTATION_WEIGHT), with a minimum of 1.
+- When adding an attestation, weight is computed using checked/saturating arithmetic: stake * multiplier_bps / 10_000.
+- Computed weight is clamped to `max_weight` and `MAX_ATTESTATION_WEIGHT`.
+- If `max_weight > 0`, weight is never below 1; if `max_weight == 0`, weight is 0.
 - Existing attestations keep their stored weight; when attester stake or config changes, only new attestations use the new weight.
 
 ## Security

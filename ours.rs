@@ -56,6 +56,8 @@ pub enum DataKey {
     Nonce(Address),
     /// Attester stake used for weighted attestation (set by admin or from bond).
     AttesterStake(Address),
+    /// Global config for weighted attestation computation.
+    WeightConfig,
 }
 
 #[contract]
@@ -356,6 +358,7 @@ impl CredenceBond {
     }
 
     /// Set attester stake (admin only). Used for weighted attestation; weight is derived from this.
+    /// Negative stake values are rejected.
     pub fn set_attester_stake(e: Env, admin: Address, attester: Address, amount: i128) {
         let stored_admin: Address = e
             .storage()
