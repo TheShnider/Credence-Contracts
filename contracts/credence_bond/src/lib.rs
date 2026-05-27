@@ -1,20 +1,21 @@
 #![no_std]
 
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env};
 use credence_errors::ContractError;
+
+mod events;
+mod safe_token;
+mod storage;
 
 // ---------------------------------------------------------------------------
 // Bond creation result
 // ---------------------------------------------------------------------------
 
 /// Represents a validated, created bond.
-///
-/// All fields are guaranteed to satisfy the invariants enforced by
-/// [`create_bond`]:
-/// - `amount > 0`
-/// - `duration > 0`
-/// - If `is_rolling`, then `0 < notice_period_duration <= duration`
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Bond {
+    pub identity: Address,
     /// Bonded amount (strictly positive).
     pub amount: i128,
     /// Bond start timestamp (ledger seconds).
@@ -24,8 +25,119 @@ pub struct Bond {
     /// Whether this is a rolling bond.
     pub is_rolling: bool,
     /// Notice period for rolling-bond withdrawals.
-    /// Meaningful only when `is_rolling` is `true`.
     pub notice_period_duration: u64,
+    /// Cooldown period for withdrawal safety.
+    pub cooldown: u64,
+}
+
+#[contract]
+pub struct CredenceBond;
+
+#[contractimpl]
+impl CredenceBond {
+    /// Creates and persists a new bond for an identity.
+    pub fn create_bond(
+        e: Env,
+        identity: Address,
+        amount: i128,
+        duration: u64,
+        is_rolling: bool,
+        notice_period_duration: u64,
+        cooldown: u64,
+    ) -> Result<Bond, ContractError> {
+        identity.require_auth();
+
+        if storage::has_bond(&e, &identity) {
+            return Err(ContractError::BondAlreadyExists);
+        }
+
+        let bond = validate_and_create_bond_struct(
+            &e,
+            identity.clone(),
+            amount,
+            duration,
+            is_rolling,
+            notice_period_duration,
+            cooldown,
+        )?;
+
+        // Safe token transfer in from the user
+        safe_token::transfer_in(&e, &identity, amount);
+
+        storage::set_bond(&e, &identity, &bond);
+        events::emit_bond_created_v2(&e, &identity, amount, duration, is_rolling, e.ledger().timestamp());
+
+        Ok(bond)
+    }
+
+    /// Increases the bonded amount for an existing bond.
+    pub fn top_up(e: Env, identity: Address, amount: i128) -> Result<(), ContractError> {
+        identity.require_auth();
+        if !is_valid_bond(amount) {
+            return Err(ContractError::InvalidBondAmount);
+        }
+
+        let mut bond = storage::get_bond(&e, &identity)?;
+        
+        safe_token::transfer_in(&e, &identity, amount);
+
+        bond.amount = bond.amount.checked_add(amount)
+            .ok_or(ContractError::Overflow)?;
+        
+        storage::set_bond(&e, &identity, &bond);
+        events::emit_bond_increased_v2(&e, &identity, amount, bond.amount, e.ledger().timestamp());
+        Ok(())
+    }
+
+    /// Extends the duration of an existing bond.
+    pub fn extend_duration(e: Env, identity: Address, extra_duration: u64) -> Result<(), ContractError> {
+        identity.require_auth();
+        let mut bond = storage::get_bond(&e, &identity)?;
+        
+        bond.duration = bond.duration.checked_add(extra_duration)
+            .ok_or(ContractError::Overflow)?;
+            
+        storage::set_bond(&e, &identity, &bond);
+        events::emit_duration_extended_v2(&e, &identity, bond.duration, e.ledger().timestamp());
+        Ok(())
+    }
+}
+
+/// Internal validator for bond construction.
+fn validate_and_create_bond_struct(
+    e: &Env,
+    identity: Address,
+    amount: i128,
+    duration: u64,
+    is_rolling: bool,
+    notice_period_duration: u64,
+    cooldown: u64,
+) -> Result<Bond, ContractError> {
+    if !is_valid_bond(amount) {
+        return Err(ContractError::InvalidBondAmount);
+    }
+
+    if duration == 0 {
+        return Err(ContractError::InvalidBondDuration);
+    }
+
+    if is_rolling && (notice_period_duration == 0 || notice_period_duration > duration) {
+        return Err(ContractError::InvalidNoticePeriod);
+    }
+
+    e.ledger().timestamp()
+        .checked_add(duration)
+        .ok_or(ContractError::Overflow)?;
+
+    Ok(Bond {
+        identity,
+        amount,
+        bond_start: e.ledger().timestamp(),
+        duration,
+        is_rolling,
+        notice_period_duration,
+        cooldown,
+    })
 }
 
 // ---------------------------------------------------------------------------
