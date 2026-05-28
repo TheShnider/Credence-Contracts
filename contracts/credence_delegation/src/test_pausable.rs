@@ -91,16 +91,28 @@ fn test_pause_proposal_id_uniqueness_and_scoped_approval_lifecycle() {
     client.approve_pause_proposal(&s3, &proposal_a);
     client.execute_pause_proposal(&proposal_a);
     assert!(client.is_paused());
-    assert!(!env.storage().instance().has(&DataKey::PauseProposal(proposal_a)));
-    assert!(!env.storage().instance().has(&DataKey::PauseApprovalCount(proposal_a)));
+    assert!(!env
+        .storage()
+        .instance()
+        .has(&DataKey::PauseProposal(proposal_a)));
+    assert!(!env
+        .storage()
+        .instance()
+        .has(&DataKey::PauseApprovalCount(proposal_a)));
 
     client.approve_pause_proposal(&s1, &proposal_b);
     assert!(client.try_execute_pause_proposal(&proposal_b).is_err());
     client.approve_pause_proposal(&s3, &proposal_b);
     client.execute_pause_proposal(&proposal_b);
     assert!(!client.is_paused());
-    assert!(!env.storage().instance().has(&DataKey::PauseProposal(proposal_b)));
-    assert!(!env.storage().instance().has(&DataKey::PauseApprovalCount(proposal_b)));
+    assert!(!env
+        .storage()
+        .instance()
+        .has(&DataKey::PauseProposal(proposal_b)));
+    assert!(!env
+        .storage()
+        .instance()
+        .has(&DataKey::PauseApprovalCount(proposal_b)));
 
     assert!(client.try_execute_pause_proposal(&proposal_a).is_err());
 }
