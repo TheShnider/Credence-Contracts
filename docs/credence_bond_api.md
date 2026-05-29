@@ -1,17 +1,15 @@
-
-
 # CredenceBond Smart Contract API
 
 The **CredenceBond** contract is a Soroban-based identity staking protocol. It allows users to "bond" (stake) tokens to establish an on-chain identity tier, which authorized verifiers can then vouch for via attestations. It includes governance-managed slashing, rolling renewals, and reentrancy protection.
 
 ## Table of Contents
 
-* [Data Structures](https://www.google.com/search?q=%23data-structures)
-* [Initialization & Admin](https://www.google.com/search?q=%23initialization--admin)
-* [Bond Management](https://www.google.com/search?q=%23bond-management)
-* [Attestation System](https://www.google.com/search?q=%23attestation-system)
-* [Governance & Slashing](https://www.google.com/search?q=%23governance--slashing)
-* [Read-Only View Functions](https://www.google.com/search?q=%23read-only-view-functions)
+- [Data Structures](https://www.google.com/search?q=%23data-structures)
+- [Initialization & Admin](https://www.google.com/search?q=%23initialization--admin)
+- [Bond Management](https://www.google.com/search?q=%23bond-management)
+- [Attestation System](https://www.google.com/search?q=%23attestation-system)
+- [Governance & Slashing](https://www.google.com/search?q=%23governance--slashing)
+- [Read-Only View Functions](https://www.google.com/search?q=%23read-only-view-functions)
 
 ---
 
@@ -19,26 +17,26 @@ The **CredenceBond** contract is a Soroban-based identity staking protocol. It a
 
 ### `IdentityBond`
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `identity` | `Address` | The owner of the bond. |
-| `bonded_amount` | `i128` | The current net amount staked. |
-| `bond_start` | `u64` | Timestamp when the bond started. |
-| `bond_duration` | `u64` | The lock-up period in seconds. |
-| `slashed_amount` | `i128` | Total amount lost to slashing. |
-| `active` | `bool` | Whether the bond is currently active. |
-| `is_rolling` | `bool` | If true, the bond auto-renews at the end of duration. |
-| `withdrawal_requested_at` | `u64` | Timestamp of withdrawal request (for rolling bonds). |
-| `notice_period_duration` | `u64` | Required lead time for rolling bond withdrawal. |
+| Field                     | Type      | Description                                           |
+| ------------------------- | --------- | ----------------------------------------------------- |
+| `identity`                | `Address` | The owner of the bond.                                |
+| `bonded_amount`           | `i128`    | The current net amount staked.                        |
+| `bond_start`              | `u64`     | Timestamp when the bond started.                      |
+| `bond_duration`           | `u64`     | The lock-up period in seconds.                        |
+| `slashed_amount`          | `i128`    | Total amount lost to slashing.                        |
+| `active`                  | `bool`    | Whether the bond is currently active.                 |
+| `is_rolling`              | `bool`    | If true, the bond auto-renews at the end of duration. |
+| `withdrawal_requested_at` | `u64`     | Timestamp of withdrawal request (for rolling bonds).  |
+| `notice_period_duration`  | `u64`     | Required lead time for rolling bond withdrawal.       |
 
 ### `BondTier`
 
 An enum representing the user's reputation level:
 
-* `Bronze`: Entry level.
-* `Silver`: Medium stake.
-* `Gold`: High stake.
-* `Platinum`: Elite stake.
+- `Bronze`: Entry level.
+- `Silver`: Medium stake.
+- `Gold`: High stake.
+- `Platinum`: Elite stake.
 
 ---
 
@@ -56,13 +54,13 @@ Returns the configured custody token address.
 
 Configures the token (e.g., USDC) used for bonding.
 
-* **Auth**: Admin signature required.
+- **Auth**: Admin signature required.
 
 ### `register_attester(e: Env, attester: Address)`
 
 Whitelists an address to allow it to submit attestations for other identities.
 
-* **Auth**: Admin signature required.
+- **Auth**: Admin signature required.
 
 ---
 
@@ -72,22 +70,23 @@ Whitelists an address to allow it to submit attestations for other identities.
 
 Creates a standard or rolling bond. Pulls approved custody tokens from the identity into the contract.
 
-* **Params**: `identity`, `amount`, `duration`, `is_rolling`, `notice_period_duration`.
-* **Auth**: `identity.require_auth()`
-* **Invariant**: on success, the contract custody increases by `amount`.
+- **Params**: `identity: Address`, `amount: i128`, `duration: u64`, `is_rolling: bool`, `notice_period_duration: u64`.
+- **Auth**: `identity.require_auth()`
+- **Invariant**: on success, the contract custody increases by `amount`.
+- **Panics**: **CRITICAL** This function will panic if an active bond already exists for the specified `identity`. To increase stakes on an active identity bond, clients must call `top_up` instead.
 
 #### Input Constraints
 
 All parameters are validated before the bond is created. Every violation returns a typed
 `ContractError` — no panics are used.
 
-| Parameter | Constraint | Error (code) |
-|-----------|-----------|--------------|
-| `amount: i128` | Must be strictly positive (`> 0`) | `InvalidBondAmount` (214) |
-| `duration: u64` | Must be strictly positive (`> 0`) | `InvalidBondDuration` (215) |
-| `notice_period_duration: u64` | When `is_rolling = true`: must be `> 0` | `InvalidNoticePeriod` (216) |
+| Parameter                     | Constraint                                      | Error (code)                |
+| ----------------------------- | ----------------------------------------------- | --------------------------- |
+| `amount: i128`                | Must be strictly positive (`> 0`)               | `InvalidBondAmount` (214)   |
+| `duration: u64`               | Must be strictly positive (`> 0`)               | `InvalidBondDuration` (215) |
+| `notice_period_duration: u64` | When `is_rolling = true`: must be `> 0`         | `InvalidNoticePeriod` (216) |
 | `notice_period_duration: u64` | When `is_rolling = true`: must be `<= duration` | `InvalidNoticePeriod` (216) |
-| `bond_start + duration` | Must not overflow `u64` | `Overflow` (700) |
+| `bond_start + duration`       | Must not overflow `u64`                         | `Overflow` (700)            |
 
 Checks are applied in the order listed above, so the first violated constraint is the one
 reported. For non-rolling bonds, `notice_period_duration` is stored but not validated.
@@ -95,26 +94,32 @@ reported. For non-rolling bonds, `notice_period_duration` is stored but not vali
 > See [`contracts/credence_bond/docs/bond-input-constraints.md`](../contracts/credence_bond/docs/bond-input-constraints.md)
 > for the full constraint reference including boundary examples and security notes.
 
-### `top_up(e: Env, amount: i128)`
+### `top_up(e: Env, identity: Address, amount: i128)`
 
 Increases the stake of an existing bond to reach a higher `BondTier`.
 Pulls additional approved custody tokens from the bonded identity into the contract.
 
-### `request_withdrawal(e: Env)`
+- **Auth**: `identity.require_auth()`
 
-**Required for Rolling Bonds.** Initiates the notice period. You cannot withdraw a rolling bond without calling this first and waiting for the `notice_period_duration`.
+### `request_withdrawal(e: Env, identity: Address)`
 
-### `withdraw_bond(e: Env, amount: i128)`
+**Required for Rolling Bonds.** Initiates the notice period for a given identity. You cannot withdraw a rolling bond without calling this first and waiting for the `notice_period_duration`.
 
-Withdraws funds after the lock-up or notice period has elapsed.
+- **Auth**: `identity.require_auth()`
 
-* **Note**: If called before the end of the lock-up on a standard bond, it will panic. Use `withdraw_early` instead.
+### `withdraw_bond(e: Env, identity: Address, amount: i128)`
 
-### `withdraw_early(e: Env, amount: i128)`
+Withdraws funds for an identity after the lock-up or notice period has elapsed.
 
-Withdraws funds before the duration is over.
+- **Auth**: `identity.require_auth()`
+- **Note**: If called before the end of the lock-up on a standard bond, it will panic. Use `withdraw_early` instead.
 
-* **Penalty**: Applies a penalty defined in the `early_exit_penalty` module, which is transferred to the treasury while the net amount is transferred to the bonded identity.
+### `withdraw_early(e: Env, identity: Address, amount: i128)`
+
+Withdraws funds for an identity before the duration is over.
+
+- **Auth**: `identity.require_auth()`
+- **Penalty**: Applies a penalty defined in the `early_exit_penalty` module, which is transferred to the treasury while the net amount is transferred to the bonded identity.
 
 ---
 
@@ -124,8 +129,8 @@ Withdraws funds before the duration is over.
 
 Allows a registered attester to vouch for a subject.
 
-* **Params**: `attester`, `subject`, `attestation_data`, `nonce`.
-* **Features**: Uses a `dedup_key` to prevent the same attester from submitting the same data twice for the same subject.
+- **Params**: `attester`, `subject`, `attestation_data`, `nonce`.
+- **Features**: Uses a `dedup_key` to prevent the same attester from submitting the same data twice for the same subject.
 
 ### `revoke_attestation(e: Env, attester: Address, attestation_id: u64, nonce: u64)`
 
@@ -141,9 +146,9 @@ The contract uses a delegated governance model to ensure slashing is fair.
 
 Sets up the council of governors and the quorum requirements for slashing proposals.
 
-### `propose_slash(e: Env, proposer: Address, amount: i128)`
+### `propose_slash(e: Env, proposer: Address, identity: Address, amount: i128)`
 
-Creates a proposal to slash a bond. Must be called by the Admin or a Governor.
+Creates a proposal to slash a specific identity's bond. Must be called by the Admin or a Governor.
 
 ### `governance_vote(e: Env, voter: Address, proposal_id: u64, approve: bool)`
 
@@ -157,20 +162,21 @@ If the quorum is reached (e.g., 51% approval), the proposer executes this functi
 
 ## Read-Only View Functions
 
-| Function | Returns | Description |
-| --- | --- | --- |
-| `get_identity_state` | `IdentityBond` | Returns all data for the current bond. |
-| `get_tier` | `BondTier` | Calculates the tier based on `bonded_amount`. |
-| `is_attester` | `bool` | Checks if an address is an authorized verifier. |
-| `get_subject_attestations` | `Vec<u64>` | Lists all attestation IDs for a specific user. |
-| `get_nonce` | `u64` | Gets the next expected nonce for replay protection. |
-| `is_locked` | `bool` | Checks if the reentrancy guard is currently active. |
+| Function                                        | Returns        | Description                                                                 |
+| ----------------------------------------------- | -------------- | --------------------------------------------------------------------------- |
+| `get_identity_state(e: Env, identity: Address)` | `IdentityBond` | Returns all data for the current bond matching the given identity.          |
+| `get_tier(e: Env, identity: Address)`           | `BondTier`     | Calculates the tier based on the identity's `bonded_amount`.                |
+| `renew_if_rolling(e: Env, identity: Address)`   | `bool`         | Processes an automated renewal epoch for rolling bonds if conditions match. |
+| `is_attester`                                   | `bool`         | Checks if an address is an authorized verifier.                             |
+| `get_subject_attestations`                      | `Vec<u64>`     | Lists all attestation IDs for a specific user.                              |
+| `get_nonce`                                     | `u64`          | Gets the next expected nonce for replay protection.                         |
+| `is_locked`                                     | `bool`         | Checks if the reentrancy guard is currently active.                         |
 
 ---
 
 ### 🛡 Security Features
 
-* **Reentrancy Guard**: Functions involving external callbacks use `with_reentrancy_guard` to prevent recursive attacks.
-* **CEI Pattern**: All state updates (Checks-Effects) happen before external token Interactions.
-* **Replay Prevention**: Nonces are consumed for every sensitive attestation action.
-* **Custody**: Real token escrow for `create_bond`, `top_up`, `withdraw`, and `withdraw_early` is documented in [bond-token-custody.md](bond-token-custody.md).
+- **Reentrancy Guard**: Functions involving external callbacks use `with_reentrancy_guard` to prevent recursive attacks.
+- **CEI Pattern**: All state updates (Checks-Effects) happen before external token Interactions.
+- **Replay Prevention**: Nonces are consumed for every sensitive attestation action.
+- **Custody**: Real token escrow for `create_bond`, `top_up`, `withdraw`, and `withdraw_early` is documented in [bond-token-custody.md](bond-token-custody.md).

@@ -31,6 +31,10 @@ mod tests {
             ContractError::InvalidPenaltyBps,
             ContractError::LeverageExceeded,
             ContractError::UnsupportedToken,
+            ContractError::InvalidBondAmount,
+            ContractError::InvalidBondDuration,
+            ContractError::InvalidNoticePeriod,
+            ContractError::BondAlreadyExists,
             ContractError::DuplicateAttestation,
             ContractError::AttestationNotFound,
             ContractError::AttestationAlreadyRevoked,
@@ -96,6 +100,10 @@ mod tests {
         assert_eq!(ContractError::InvalidPenaltyBps as u32, 211);
         assert_eq!(ContractError::LeverageExceeded as u32, 212);
         assert_eq!(ContractError::UnsupportedToken as u32, 213);
+        assert_eq!(ContractError::InvalidBondAmount as u32, 214);
+        assert_eq!(ContractError::InvalidBondDuration as u32, 215);
+        assert_eq!(ContractError::InvalidNoticePeriod as u32, 216);
+        assert_eq!(ContractError::BondAlreadyExists as u32, 217);
     }
 
     #[test]
@@ -221,6 +229,22 @@ mod tests {
         );
         assert_eq!(
             ContractError::InvalidPenaltyBps.category(),
+            ErrorCategory::Bond
+        );
+        assert_eq!(
+            ContractError::InvalidBondAmount.category(),
+            ErrorCategory::Bond
+        );
+        assert_eq!(
+            ContractError::InvalidBondDuration.category(),
+            ErrorCategory::Bond
+        );
+        assert_eq!(
+            ContractError::InvalidNoticePeriod.category(),
+            ErrorCategory::Bond
+        );
+        assert_eq!(
+            ContractError::BondAlreadyExists.category(),
             ErrorCategory::Bond
         );
     }
@@ -358,7 +382,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            50,
+            55,
             "Update all_variants() and this count when adding new errors"
         );
     }

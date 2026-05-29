@@ -45,7 +45,7 @@ pub use types::Attestation;
 #[contracttype]
 pub enum DataKey {
     Admin,
-    Bond,
+    Bond(Address),
     Attester(Address),
     Attestation(u64),
     AttestationCounter,
@@ -183,7 +183,10 @@ impl CredenceBond {
             withdrawal_requested_at: 0,
             notice_period_duration,
         };
-        let key = DataKey::Bond;
+        let key = DataKey::Bond(identity.clone());
+        if e.storage().instance().has(&key) {
+            panic_with_error!(e, ContractError::BondAlreadyExists);
+        }
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e, &key);
         let tier = tiered_bond::get_tier_for_amount(amount);
@@ -195,8 +198,8 @@ impl CredenceBond {
     ///
     /// Errors:
     /// - `ContractError::BondNotFound` (200)
-    pub fn get_identity_state(e: Env) -> IdentityBond {
-        let key = DataKey::Bond;
+    pub fn get_identity_state(e: Env, identity: Address) -> IdentityBond {
+        let key = DataKey::Bond(identity);
         let bond = e.storage()
             .instance()
             .get::<_, IdentityBond>(&key)
@@ -438,8 +441,9 @@ impl CredenceBond {
     /// - `ContractError::SlashExceedsBond` (203)
     /// - `ContractError::InsufficientBalance` (202)
     /// - `ContractError::Underflow` (701)
-    pub fn withdraw(e: Env, amount: i128) -> IdentityBond {
-        let key = DataKey::Bond;
+    pub fn withdraw(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        identity.require_auth();
+        let key = DataKey::Bond(identity);
         let mut bond = e
             .storage()
             .instance()
@@ -499,8 +503,9 @@ impl CredenceBond {
     /// - `ContractError::InsufficientBalance` (202)
     /// - `ContractError::LockupNotExpired` (204)
     /// - `ContractError::Underflow` (701)
-    pub fn withdraw_early(e: Env, amount: i128) -> IdentityBond {
-        let key = DataKey::Bond;
+    pub fn withdraw_early(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        identity.require_auth();
+        let key = DataKey::Bond(identity);
         let mut bond = e
             .storage()
             .instance()
@@ -555,8 +560,9 @@ impl CredenceBond {
     /// - `ContractError::BondNotFound` (200)
     /// - `ContractError::NotRollingBond` (205)
     /// - `ContractError::WithdrawalAlreadyRequested` (206)
-    pub fn request_withdrawal(e: Env) -> IdentityBond {
-        let key = DataKey::Bond;
+    pub fn request_withdrawal(e: Env, identity: Address) -> IdentityBond {
+        identity.require_auth();
+        let key = DataKey::Bond(identity);
         let mut bond = e
             .storage()
             .instance()
@@ -582,8 +588,8 @@ impl CredenceBond {
     ///
     /// Errors:
     /// - `ContractError::BondNotFound` (200)
-    pub fn renew_if_rolling(e: Env) -> IdentityBond {
-        let key = DataKey::Bond;
+    pub fn renew_if_rolling(e: Env, identity: Address) -> IdentityBond {
+        let key = DataKey::Bond(identity);
         let mut bond = e
             .storage()
             .instance()
@@ -611,8 +617,8 @@ impl CredenceBond {
     }
 
     /// Get current tier for the bond's bonded amount.
-    pub fn get_tier(e: Env) -> BondTier {
-        let bond = Self::get_identity_state(e);
+    pub fn get_tier(e: Env, identity: Address) -> BondTier {
+        let bond = Self::get_identity_state(e, identity);
         tiered_bond::get_tier_for_amount(bond.bonded_amount)
     }
 
@@ -632,8 +638,8 @@ impl CredenceBond {
     ///
     /// # Events
     /// Emits `bond_slashed` event with (identity, slash_amount, total_slashed_amount)
-    pub fn slash(e: Env, admin: Address, amount: i128) -> IdentityBond {
-        slashing::slash_bond(&e, &admin, amount)
+    pub fn slash(e: Env, admin: Address, identity: Address, amount: i128) -> IdentityBond {
+        slashing::slash_bond(&e, &admin, &identity, amount)
     }
 
     /// Top up the bond with additional amount (checks for overflow)
@@ -641,8 +647,8 @@ impl CredenceBond {
     /// Errors:
     /// - `ContractError::BondNotFound` (200)
     /// - `ContractError::Overflow` (700)
-    pub fn top_up(e: Env, amount: i128) -> IdentityBond {
-        let key = DataKey::Bond;
+    pub fn top_up(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        let key = DataKey::Bond(identity);
         let mut bond = e
             .storage()
             .instance()
@@ -665,8 +671,8 @@ impl CredenceBond {
     /// Errors:
     /// - `ContractError::BondNotFound` (200)
     /// - `ContractError::Overflow` (700)
-    pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
-        let key = DataKey::Bond;
+    pub fn extend_duration(e: Env, identity: Address, additional_duration: u64) -> IdentityBond {
+        let key = DataKey::Bond(identity);
         let mut bond = e
             .storage()
             .instance()
@@ -710,7 +716,7 @@ impl CredenceBond {
         identity.require_auth();
         Self::acquire_lock(&e);
 
-        let bond_key = DataKey::Bond;
+        let bond_key = DataKey::Bond(identity.clone());
         let bond: IdentityBond = e
             .storage()
             .instance()
@@ -787,7 +793,7 @@ impl CredenceBond {
     /// - `ContractError::BondNotFound` (200)
     /// - `ContractError::BondNotActive` (201)
     /// - `ContractError::SlashExceedsBond` (203)
-    pub fn slash_bond(e: Env, admin: Address, slash_amount: i128) -> i128 {
+    pub fn slash_bond(e: Env, admin: Address, identity: Address, slash_amount: i128) -> i128 {
         admin.require_auth();
         Self::acquire_lock(&e);
 
@@ -801,7 +807,7 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::NotAdmin);
         }
 
-        let bond_key = DataKey::Bond;
+        let bond_key = DataKey::Bond(identity.clone());
         let bond: IdentityBond = e
             .storage()
             .instance()

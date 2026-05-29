@@ -44,11 +44,11 @@ fn test_ttl_bumps_on_reads_keep_entry_alive() {
 
     // Advance to just below the TTL threshold and read to bump again
     advance_with_max_ttl(&env, STORAGE_TTL_EXTEND_TO - 1, STORAGE_TTL_EXTEND_TO);
-    let _ = client.get_identity_state();
+    let _ = client.get_identity_state(&owner);
 
     // Advance again close to the TTL and ensure read still succeeds
     advance_with_max_ttl(&env, STORAGE_TTL_EXTEND_TO - 1, STORAGE_TTL_EXTEND_TO);
-    let _ = client.get_identity_state();
+    let _ = client.get_identity_state(&owner);
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn test_bond_locked_for_max_duration_never_expires_before_unlock() {
 
     // Advance to bond end (just before unlock) and ensure bond still present
     advance_with_max_ttl(&env, max_duration - 1, STORAGE_TTL_EXTEND_TO);
-    let _ = client.get_identity_state();
+    let _ = client.get_identity_state(&owner);
 
     // Advance to unlock time and attempt withdraw_bond (owner must be able to withdraw)
     advance_with_max_ttl(&env, 2, STORAGE_TTL_EXTEND_TO);
@@ -121,14 +121,15 @@ fn test_not_initialized_errors() {
 fn test_bond_not_found_and_insufficient_balance() {
     let (env, _admin, client) = setup();
 
+    let owner = Address::generate(&env);
+
     // No bond exists yet
-    let err = client.try_get_identity_state().unwrap_err().unwrap();
+    let err = client.try_get_identity_state(&owner).unwrap_err().unwrap();
     assert_eq!(err, ContractError::BondNotFound);
 
     // Create a small bond and attempt to withdraw more than available
-    let owner = Address::generate(&env);
     let _bond = client.create_bond(&owner, &100_i128, &1000_u64);
-    let err2 = client.try_withdraw(&200_i128).unwrap_err().unwrap();
+    let err2 = client.try_withdraw(&owner, &200_i128).unwrap_err().unwrap();
     assert_eq!(err2, ContractError::InsufficientBalance);
 }
 
@@ -139,12 +140,12 @@ fn test_request_withdrawal_not_rolling_and_already_requested() {
 
     // Non-rolling bond -> NotRollingBond
     let _bond = client.create_bond(&owner, &100_i128, &1000_u64);
-    let err = client.try_request_withdrawal().unwrap_err().unwrap();
+    let err = client.try_request_withdrawal(&owner).unwrap_err().unwrap();
     assert_eq!(err, ContractError::NotRollingBond);
 
     // Rolling bond: first request succeeds, second fails with WithdrawalAlreadyRequested
     let _rb = client.create_bond_with_rolling(&owner, &100_i128, &1000_u64, &true, &10_u64);
-    let _ = client.request_withdrawal();
-    let err2 = client.try_request_withdrawal().unwrap_err().unwrap();
+    let _ = client.request_withdrawal(&owner);
+    let err2 = client.try_request_withdrawal(&owner).unwrap_err().unwrap();
     assert_eq!(err2, ContractError::WithdrawalAlreadyRequested);
 }

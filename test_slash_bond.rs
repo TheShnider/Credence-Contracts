@@ -33,22 +33,22 @@ fn last_bond_slashed_event(e: &Env) -> (Address, i128, i128) {
 
 #[test]
 fn slash_bond_rejects_negative_amount() {
-    let (_, client, admin, _) = setup();
+    let (_, client, admin, identity) = setup();
 
-    assert!(client.try_slash_bond(&admin, &-1_i128).is_err());
+    assert!(client.try_slash_bond(&admin, &identity, &-1_i128).is_err());
 
-    let bond = client.get_identity_state();
+    let bond = client.get_identity_state(&identity);
     assert_eq!(bond.slashed_amount, 0);
     assert!(!client.is_locked());
 }
 
 #[test]
 fn slash_bond_rejects_zero_amount() {
-    let (_, client, admin, _) = setup();
+    let (_, client, admin, identity) = setup();
 
-    assert!(client.try_slash_bond(&admin, &0_i128).is_err());
+    assert!(client.try_slash_bond(&admin, &identity, &0_i128).is_err());
 
-    let bond = client.get_identity_state();
+    let bond = client.get_identity_state(&identity);
     assert_eq!(bond.slashed_amount, 0);
     assert!(!client.is_locked());
 }
@@ -57,10 +57,10 @@ fn slash_bond_rejects_zero_amount() {
 fn slash_bond_emits_canonical_event_payload() {
     let (e, client, admin, identity) = setup();
 
-    let total_slashed = client.slash_bond(&admin, &250_i128);
+    let total_slashed = client.slash_bond(&admin, &identity, &250_i128);
 
     assert_eq!(total_slashed, 250);
-    assert_eq!(client.get_identity_state().slashed_amount, 250);
+    assert_eq!(client.get_identity_state(&identity).slashed_amount, 250);
     assert_eq!(last_bond_slashed_event(&e), (identity, 250, 250));
 }
 
@@ -68,38 +68,38 @@ fn slash_bond_emits_canonical_event_payload() {
 fn slash_bond_allows_exact_cap() {
     let (e, client, admin, identity) = setup();
 
-    let total_slashed = client.slash_bond(&admin, &AMOUNT);
+    let total_slashed = client.slash_bond(&admin, &identity, &AMOUNT);
 
     assert_eq!(total_slashed, AMOUNT);
-    assert_eq!(client.get_identity_state().slashed_amount, AMOUNT);
+    assert_eq!(client.get_identity_state(&identity).slashed_amount, AMOUNT);
     assert_eq!(last_bond_slashed_event(&e), (identity, AMOUNT, AMOUNT));
 }
 
 #[test]
 fn slash_bond_rejects_over_cap_and_preserves_state() {
-    let (_, client, admin, _) = setup();
-    client.slash_bond(&admin, &750_i128);
+    let (_, client, admin, identity) = setup();
+    client.slash_bond(&admin, &identity, &750_i128);
 
-    assert!(client.try_slash_bond(&admin, &251_i128).is_err());
+    assert!(client.try_slash_bond(&admin, &identity, &251_i128).is_err());
 
-    let bond = client.get_identity_state();
+    let bond = client.get_identity_state(&identity);
     assert_eq!(bond.slashed_amount, 750);
     assert!(!client.is_locked());
 }
 
 #[test]
 fn slash_bond_keeps_slashed_amount_monotonic_and_bounded() {
-    let (_, client, admin, _) = setup();
+    let (_, client, admin, identity) = setup();
 
-    let first = client.slash_bond(&admin, &100_i128);
-    let second = client.slash_bond(&admin, &300_i128);
-    let third = client.slash_bond(&admin, &600_i128);
+    let first = client.slash_bond(&admin, &identity, &100_i128);
+    let second = client.slash_bond(&admin, &identity, &300_i128);
+    let third = client.slash_bond(&admin, &identity, &600_i128);
 
     assert_eq!(first, 100);
     assert_eq!(second, 400);
     assert_eq!(third, AMOUNT);
 
-    let bond = client.get_identity_state();
+    let bond = client.get_identity_state(&identity);
     assert_eq!(bond.slashed_amount, AMOUNT);
     assert!(bond.slashed_amount <= bond.bonded_amount);
 }
