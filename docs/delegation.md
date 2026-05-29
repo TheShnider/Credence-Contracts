@@ -57,6 +57,7 @@ Returns `true` if the delegation exists, is not revoked, and has not expired. Re
 ## Security
 
 - Only the owner can create or revoke their delegations (`require_auth`).
+- Delegated payload verification now reports distinct error codes for each failure mode: `DomainMismatch` (503), `OwnerMismatch` (504), `TargetMismatch` (505), and `ContractIdMismatch` (506).
 - Delegations are time-bound; expired delegations are treated as invalid.
 - Double initialization is rejected.
 - Double revocation is rejected.

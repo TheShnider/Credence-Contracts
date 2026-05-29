@@ -288,6 +288,26 @@ pub enum ContractError {
     /// Contracts: delegation
     AlreadyRevoked = 502,
 
+    /// Payload domain tag does not match the expected delegated action.
+    /// Replaces: panic!("domain mismatch")
+    /// Contracts: delegation
+    DomainMismatch = 503,
+
+    /// Payload owner does not match the expected caller owner.
+    /// Replaces: panic!("owner mismatch")
+    /// Contracts: delegation
+    OwnerMismatch = 504,
+
+    /// Payload target does not match the expected action target.
+    /// Replaces: panic!("target mismatch")
+    /// Contracts: delegation
+    TargetMismatch = 505,
+
+    /// Payload contract_id does not match the current contract address.
+    /// Replaces: panic!("contract_id mismatch")
+    /// Contracts: delegation
+    ContractIdMismatch = 506,
+
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
     /// Replaces: panic!("amount must be positive")
@@ -401,7 +421,11 @@ impl ErrorExt for ContractError {
 
             ContractError::ExpiryInPast
             | ContractError::DelegationNotFound
-            | ContractError::AlreadyRevoked => ErrorCategory::Delegation,
+            | ContractError::AlreadyRevoked
+            | ContractError::DomainMismatch
+            | ContractError::OwnerMismatch
+            | ContractError::TargetMismatch
+            | ContractError::ContractIdMismatch => ErrorCategory::Delegation,
 
             ContractError::AmountMustBePositive
             | ContractError::ThresholdExceedsSigners
@@ -442,6 +466,10 @@ impl ErrorExt for ContractError {
             }
             ContractError::ReentrancyDetected => "Reentrancy detected; call rejected",
             ContractError::InvalidNonce => "Nonce is replayed or out of order",
+            ContractError::DomainMismatch => "Payload domain tag does not match the expected delegated action",
+            ContractError::OwnerMismatch => "Payload owner does not match the expected caller owner",
+            ContractError::TargetMismatch => "Payload target does not match the expected action target",
+            ContractError::ContractIdMismatch => "Payload contract_id does not match the current contract address",
             ContractError::NegativeStake => "Attester stake cannot be negative",
             ContractError::EarlyExitConfigNotSet => {
                 "Early-exit configuration has not been set for this bond"

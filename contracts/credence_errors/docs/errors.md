@@ -92,6 +92,10 @@ wire-stable error code instead of an opaque transaction failure.
 | 500 | `ExpiryInPast` | `"expiry must be in the future"` | Delegation expiry is in the past |
 | 501 | `DelegationNotFound` | `"delegation not found"` | No delegation record found |
 | 502 | `AlreadyRevoked` | `"already revoked"` | Delegation already revoked |
+| 503 | `DomainMismatch` | `"domain mismatch"` | Delegated payload domain tag does not match the expected action |
+| 504 | `OwnerMismatch` | `"owner mismatch"` | Delegated payload owner does not match the caller owner |
+| 505 | `TargetMismatch` | `"target mismatch"` | Delegated payload target does not match the expected action target |
+| 506 | `ContractIdMismatch` | `"contract_id mismatch"` | Delegated payload contract_id does not match the current contract address |
 
 ### Treasury (600-699)
 

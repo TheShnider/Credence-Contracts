@@ -84,3 +84,7 @@ Returns the raw `Delegation` struct. Panics if no record is found.
 | `expiry must be in the future` | The `expires_at` provided is $\le$ current ledger timestamp. |
 | `delegation not found` | Attempted to get or revoke a non-existent record. |
 | `already revoked` | Attempted to revoke a delegation that is already in a revoked state. |
+| `domain mismatch` | Delegated payload domain tag did not match the expected action. |
+| `owner mismatch` | Delegated payload owner did not match the expected caller owner. |
+| `target mismatch` | Delegated payload target did not match the expected action target. |
+| `contract_id mismatch` | Delegated payload contract_id did not match the current contract address. |

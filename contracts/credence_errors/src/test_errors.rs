@@ -131,6 +131,10 @@ mod tests {
         assert_eq!(ContractError::ExpiryInPast as u32, 500);
         assert_eq!(ContractError::DelegationNotFound as u32, 501);
         assert_eq!(ContractError::AlreadyRevoked as u32, 502);
+        assert_eq!(ContractError::DomainMismatch as u32, 503);
+        assert_eq!(ContractError::OwnerMismatch as u32, 504);
+        assert_eq!(ContractError::TargetMismatch as u32, 505);
+        assert_eq!(ContractError::ContractIdMismatch as u32, 506);
     }
 
     #[test]
@@ -313,6 +317,22 @@ mod tests {
         );
         assert_eq!(
             ContractError::AlreadyRevoked.category(),
+            ErrorCategory::Delegation
+        );
+        assert_eq!(
+            ContractError::DomainMismatch.category(),
+            ErrorCategory::Delegation
+        );
+        assert_eq!(
+            ContractError::OwnerMismatch.category(),
+            ErrorCategory::Delegation
+        );
+        assert_eq!(
+            ContractError::TargetMismatch.category(),
+            ErrorCategory::Delegation
+        );
+        assert_eq!(
+            ContractError::ContractIdMismatch.category(),
             ErrorCategory::Delegation
         );
     }

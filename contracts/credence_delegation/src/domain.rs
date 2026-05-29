@@ -62,8 +62,14 @@ pub struct DelegatedActionPayload {
 /// Validates that the fields in `payload` match the parameters supplied at the
 /// call site, and that the `domain` tag is exactly `expected_domain`.
 ///
-/// Panics with a descriptive message on any mismatch, providing clear audit
-/// trail information for both automated monitoring and manual review.
+/// Panics with a descriptive, wire-stable delegation error code on any mismatch.
+/// This preserves audit trail clarity by making every distinguishable payload
+/// failure mode observable as a distinct `ContractError`.
+///
+/// - Domain mismatch => `DomainMismatch` (503)
+/// - Owner mismatch  => `OwnerMismatch` (504)
+/// - Target mismatch => `TargetMismatch` (505)
+/// - Contract ID mismatch => `ContractIdMismatch` (506)
 pub fn verify_payload(
     e: &Env,
     payload: &DelegatedActionPayload,
@@ -72,15 +78,15 @@ pub fn verify_payload(
     caller_target: &Address,
 ) {
     if payload.domain != expected_domain {
-        panic_with_error!(e, ContractError::InvalidNonce);
+        panic_with_error!(e, ContractError::DomainMismatch);
     }
     if &payload.owner != caller_owner {
-        panic_with_error!(e, ContractError::InvalidNonce);
+        panic_with_error!(e, ContractError::OwnerMismatch);
     }
     if &payload.target != caller_target {
-        panic_with_error!(e, ContractError::InvalidNonce);
+        panic_with_error!(e, ContractError::TargetMismatch);
     }
     if payload.contract_id != e.current_contract_address() {
-        panic_with_error!(e, ContractError::InvalidNonce);
+        panic_with_error!(e, ContractError::ContractIdMismatch);
     }
 }
