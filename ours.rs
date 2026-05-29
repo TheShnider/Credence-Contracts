@@ -490,10 +490,14 @@ impl CredenceBond {
         weighted_attestation::get_weight_config(&e)
     }
 
-    /// Withdraw from bond. Checks that the bond has sufficient balance after accounting for slashed amount.
+    /// Withdraw from bond after lock-up period has ended. Penalty-free withdrawal.
+    /// For early exits before lock-up expiry, use withdraw_early() which applies penalties.
     ///
     /// Authority: stored bond owner (`bond.identity`) must authorize this call.
     /// Returns the updated bond with reduced bonded_amount.
+    ///
+    /// Panics:
+    /// - "lock-up not expired; use withdraw_early" if called before lock-up ends
     ///
     /// Errors:
     /// - `ContractError::BondNotFound` (200)
@@ -509,6 +513,17 @@ impl CredenceBond {
             .get::<_, IdentityBond>(&key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
         bump_instance_ttl(&e, &key);
+
+        // Enforce lock-up expiry: withdraw is only for post-lock-up withdrawals.
+        // For early exits, caller must use withdraw_early which applies penalties.
+        let now = e.ledger().timestamp();
+        let end = bond
+            .bond_start
+            .checked_add(bond.bond_duration)
+            .expect("bond end timestamp overflow");
+        if now < end {
+            panic!("lock-up not expired; use withdraw_early");
+        }
 
         // Rolling bonds must have completed the notice window before funds can leave.
         if bond.is_rolling {
@@ -552,6 +567,7 @@ impl CredenceBond {
     }
 
     /// Withdraw before lock-up end; applies early exit penalty and transfers penalty to treasury.
+    /// This function is ONLY valid before lock-up expiry. After lock-up ends, use withdraw().
     ///
     /// Withdraw before lock-up end; applies a time-decayed penalty.
     ///
@@ -562,8 +578,7 @@ impl CredenceBond {
     /// - `ContractError::BondNotFound` (200)
     /// - `ContractError::SlashExceedsBond` (203)
     /// - `ContractError::InsufficientBalance` (202)
-    /// - `ContractError::LockupNotExpired` (204) — bond already past its end
-    /// - `ContractError::EarlyExitConfigNotSet` (210) — admin never called `set_early_exit_config`
+    /// - `ContractError::LockupNotExpired` (204) - lock-up has already expired; use withdraw
     /// - `ContractError::Underflow` (701)
     ///
     /// Resource budget:
@@ -1162,6 +1177,9 @@ mod test_weighted_attestation;
 
 #[cfg(test)]
 mod test_replay_prevention;
+
+#[cfg(test)]
+mod test_lockup_gate;
 
 #[cfg(test)]
 mod security;
