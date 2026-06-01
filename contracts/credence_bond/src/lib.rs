@@ -24,9 +24,11 @@ pub mod types;
 #[cfg(test)]
 pub mod test_invariants;
 
-/// Tests exercising the reusable bond-invariant library (test-only).
+/// Chaos testing suite for simulating host and token failures.
 #[cfg(test)]
-mod test_invariants_usage;
+mod chaos_token;
+#[cfg(test)]
+mod test_chaos;
 
 use credence_errors::ContractError;
 use soroban_sdk::{
@@ -176,6 +178,7 @@ impl CredenceBond {
     ) -> IdentityBond {
         // auth: tree shape [Identity] -> [Bond::create_bond]; may be delegated.
         identity.require_auth();
+        /// chaos: ledger timestamp can be manipulated in tests to verify duration invariants.
         let bond_start = e.ledger().timestamp();
 
         let _end_timestamp = bond_start
@@ -675,6 +678,7 @@ main
         e.storage().instance().set(&bond_key, &updated);
         bump_instance_ttl(&e);
 
+        /// chaos: external callback panic must result in atomic state revert and lock release.
         let cb_key = Symbol::new(&e, "callback");
         if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
             let fn_name = Symbol::new(&e, "on_withdraw");
