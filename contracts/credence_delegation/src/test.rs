@@ -29,6 +29,25 @@ fn delegate_payload(
         target: target.clone(),
         contract_id: contract_id.clone(),
         nonce,
+        scheme: 0, // Default to Ed25519 for backwards compatibility
+    }
+}
+
+fn delegate_payload_with_scheme(
+    domain: DomainTag,
+    owner: &Address,
+    target: &Address,
+    contract_id: &Address,
+    nonce: u64,
+    scheme: u8,
+) -> DelegatedActionPayload {
+    DelegatedActionPayload {
+        domain,
+        owner: owner.clone(),
+        target: target.clone(),
+        contract_id: contract_id.clone(),
+        nonce,
+        scheme,
     }
 }
 

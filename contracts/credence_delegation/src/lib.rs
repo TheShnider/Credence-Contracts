@@ -21,8 +21,10 @@ use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
 pub mod domain;
 pub mod nonce;
 pub mod pausable;
+pub mod verifier;
 
 pub use domain::{DelegatedActionPayload, DomainTag};
+pub use verifier::SchemeTag;
 
 // ---------------------------------------------------------------------------
 // Contract types
@@ -72,6 +74,9 @@ enum DataKey {
     Delegation(Address, Address, DelegationType),
     /// Per-identity nonce for replay prevention.
     Nonce(Address),
+    /// Verifier ID for a given signature scheme tag (scheme -> Address).
+    /// Maps scheme tag (Ed25519=0, Secp256r1=1, MLDSA44=2) to a verifier address.
+    Verifier(u8),
 }
 
 // ---------------------------------------------------------------------------
@@ -350,6 +355,71 @@ impl CredenceDelegation {
     }
 
     // -----------------------------------------------------------------------
+    // Verifier scheme registry (admin-controlled, post-quantum support)
+    // -----------------------------------------------------------------------
+
+    /// Register a verifier for a given signature scheme.
+    ///
+    /// Only the admin can register verifiers. Each scheme (Ed25519, Secp256r1,
+    /// MLDSA44) is mapped to a verifier address. Registration emits a
+    /// `verifier_registered` event for audit trail tracking.
+    ///
+    /// New verifiers can be registered at any time, enabling the contract to
+    /// support additional cryptographic schemes after deployment. A scheme that
+    /// already has a registered verifier can be re-registered with a new one
+    /// (updating the mapping).
+    ///
+    /// # Arguments
+    /// * `admin` - Must be the contract admin (checked via `require_auth()`)
+    /// * `scheme` - The signature scheme tag (0=Ed25519, 1=Secp256r1, 2=MLDSA44)
+    /// * `verifier_id` - Address of the verifier contract/module
+    ///
+    /// # Errors
+    /// * `NotAdmin` - if `admin` is not the contract admin
+    /// * `UnknownScheme` - if scheme is not a recognized value
+    pub fn register_verifier(e: Env, admin: Address, scheme: u8, verifier_id: Address) {
+        admin.require_auth();
+        
+        // Check that only the admin can register verifiers
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
+        if admin != stored_admin {
+            panic_with_error!(&e, ContractError::NotAdmin);
+        }
+
+        // Validate scheme is known
+        verifier::validate_scheme_registered(&e, scheme);
+
+        // Register the verifier
+        let key = DataKey::Verifier(scheme);
+        e.storage().instance().set(&key, &verifier_id);
+
+        // Emit audit event
+        verifier::emit_verifier_registered(&e, scheme, &verifier_id, &admin);
+
+        e.events().publish(
+            (Symbol::new(&e, "verifier_registered"), scheme),
+            verifier_id,
+        );
+    }
+
+    /// Retrieve the registered verifier for a given signature scheme.
+    ///
+    /// Returns the address of the verifier contract/module for the scheme.
+    /// If no verifier is registered for the scheme, returns `None`.
+    ///
+    /// Clients can use this to check scheme support before submitting
+    /// delegated payloads.
+    pub fn get_verifier(e: Env, scheme: u8) -> Option<Address> {
+        e.storage()
+            .instance()
+            .get(&DataKey::Verifier(scheme))
+    }
+
+    // -----------------------------------------------------------------------
     // Pausable pass-throughs
     // -----------------------------------------------------------------------
 
@@ -450,6 +520,9 @@ impl CredenceDelegation {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod test_verifier;
 
 #[cfg(test)]
 mod test_pausable;

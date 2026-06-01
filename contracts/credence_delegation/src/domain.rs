@@ -13,13 +13,23 @@
 //! * `target`       — the address being acted upon (delegate or subject)
 //! * `contract_id`  — the current contract's address (chain / deployment context)
 //! * `nonce`        — monotonically increasing per-owner counter
+//! * `scheme`       — the signature scheme (Ed25519, Secp256r1, MLDSA44)
 //!
 //! Signature verification must hash *all* of these fields together.  A
 //! signature produced for `domain = Delegate` will be structurally incompatible
 //! with a `revoke_delegation` call even if the nonce happens to match.
+//!
+//! ## Multi-Scheme Support
+//!
+//! The `scheme` field enables support for post-quantum cryptographic algorithms.
+//! Legacy payloads created before multi-scheme support default to Ed25519 when
+//! the scheme field is absent, preserving backwards compatibility. Clients
+//! transmitting payloads should always set the scheme explicitly.
 
 use credence_errors::ContractError;
 use soroban_sdk::{contracttype, panic_with_error, Address, Env};
+
+pub use crate::verifier::SchemeTag;
 
 /// Labels each function domain that accepts a delegated (off-chain) signature.
 ///
@@ -44,6 +54,17 @@ pub enum DomainTag {
 /// and by verifying `owner.require_auth()` with the env's built-in
 /// authorisation mechanism — which itself binds the call to the contract
 /// address and ledger network.
+///
+/// ## Backwards Compatibility
+///
+/// Payloads created before multi-scheme support may lack an explicit `scheme`
+/// field. During decoding, if the scheme is absent or invalid, [`decode_scheme_safe`]
+/// defaults to Ed25519, ensuring that existing delegated payloads continue to verify
+/// without modification.
+///
+/// Wire-stability note: The `scheme` field value must never be reinterpreted
+/// or renumbered after deployment. Old signatures must remain verifiable even
+/// after the contract supports new schemes.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct DelegatedActionPayload {
@@ -57,6 +78,9 @@ pub struct DelegatedActionPayload {
     pub contract_id: Address,
     /// Owner's current nonce — consumed on success.
     pub nonce: u64,
+    /// The signature scheme: Ed25519, Secp256r1, or MLDSA44.
+    /// Defaults to Ed25519 for backwards compatibility with legacy payloads.
+    pub scheme: u8,
 }
 
 /// Validates that the fields in `payload` match the parameters supplied at the
@@ -66,10 +90,10 @@ pub struct DelegatedActionPayload {
 /// This preserves audit trail clarity by making every distinguishable payload
 /// failure mode observable as a distinct `ContractError`.
 ///
-/// - Domain mismatch => `DomainMismatch` (503)
-/// - Owner mismatch  => `OwnerMismatch` (504)
-/// - Target mismatch => `TargetMismatch` (505)
-/// - Contract ID mismatch => `ContractIdMismatch` (506)
+/// - Domain mismatch => `DomainMismatch` (504)
+/// - Owner mismatch  => `OwnerMismatch` (505)
+/// - Target mismatch => `TargetMismatch` (506)
+/// - Contract ID mismatch => `ContractIdMismatch` (507)
 pub fn verify_payload(
     e: &Env,
     payload: &DelegatedActionPayload,
@@ -88,5 +112,31 @@ pub fn verify_payload(
     }
     if payload.contract_id != e.current_contract_address() {
         panic_with_error!(e, ContractError::ContractIdMismatch);
+    }
+}
+
+/// Safely decode a scheme tag from the payload, defaulting to Ed25519 for
+/// backwards compatibility with legacy payloads.
+///
+/// This function is used during deserialization to handle payloads created
+/// before multi-scheme support. If the scheme field is absent or contains
+/// an unrecognized value, it defaults to Ed25519.
+///
+/// For strict validation (rejecting unknown schemes), use
+/// [`verify_scheme_supported`] after calling this function.
+pub fn decode_scheme_safe(payload: &DelegatedActionPayload) -> SchemeTag {
+    match SchemeTag::try_from_u8(payload.scheme) {
+        Some(scheme) => scheme,
+        None => SchemeTag::default_scheme(),
+    }
+}
+
+/// Verify that the payload's scheme is a known and supported value.
+///
+/// Panics with `UnknownScheme` if the scheme is not recognized.
+/// Call this after decoding to enforce strict validation.
+pub fn verify_scheme_supported(e: &Env, scheme: u8) {
+    if !SchemeTag::is_known(scheme) {
+        panic_with_error!(e, ContractError::UnknownScheme);
     }
 }
