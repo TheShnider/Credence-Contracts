@@ -67,6 +67,12 @@ When `SubjectAttestationCount(subject)` is present it must equal the length of
 canonical list.
 **Owner:** `SubjectAttestationCount`.
 
+## On-chain drift detection (issue #436)
+
+Production bond writes also call `invariants::assert_self_consistent` after persisting
+state. Failures emit `bond_drift_detected` and panic with `ContractError::InvariantViolation`
+(code **218**). See [`bond-drift-detection.md`](bond-drift-detection.md) for the operations runbook.
+
 ## Usage
 
 | Function | Scope | When to use |

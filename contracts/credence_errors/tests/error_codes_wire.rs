@@ -33,6 +33,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::InvalidBondDuration as u32, 215);
     assert_eq!(ContractError::InvalidNoticePeriod as u32, 216);
     assert_eq!(ContractError::BondAlreadyExists as u32, 217);
+    assert_eq!(ContractError::InvariantViolation as u32, 218);
 
     assert_eq!(ContractError::DuplicateAttestation as u32, 300);
     assert_eq!(ContractError::AttestationNotFound as u32, 301);

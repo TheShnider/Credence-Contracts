@@ -172,6 +172,7 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
 
     // 7. Persist updated bond state
     e.storage().instance().set(&key, &bond);
+    crate::invariants::assert_self_consistent(e);
 
     // 8. Emit slashing event for off-chain tracking
     emit_slashing_event(e, &bond.identity, actual_slash_amount, bond.slashed_amount);
@@ -237,6 +238,7 @@ pub fn unslash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBo
         .expect("unslashing would reduce below 0");
 
     e.storage().instance().set(&key, &bond);
+    crate::invariants::assert_self_consistent(e);
     emit_unslashing_event(e, &bond.identity, amount, bond.slashed_amount);
 
     bond
@@ -374,9 +376,12 @@ mod tests {
 }
 
 /// Wrapper that accepts an identity parameter for backward compatibility with fork variants.
-pub fn slash_bond_with_identity(e: &Env, admin: &Address, _identity: &Address, slash_amount: i128) -> IdentityBond {
+pub fn slash_bond_with_identity(
+    e: &Env,
+    admin: &Address,
+    _identity: &Address,
+    slash_amount: i128,
+) -> crate::IdentityBond {
     slash_bond(e, admin, slash_amount)
-
-main
 }
 

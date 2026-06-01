@@ -247,6 +247,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     BondAlreadyExists = 217,
 
+    /// Post-write invariant self-check detected bond or attestation accounting drift.
+    /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvariantViolation = 218,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -494,7 +500,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondAmount
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
-            | ContractError::BondAlreadyExists => ErrorCategory::Bond,
+            | ContractError::BondAlreadyExists
+            | ContractError::InvariantViolation => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -572,6 +579,9 @@ impl ErrorExt for ContractError {
             ContractError::InvalidBondDuration => "Bond duration must be strictly positive (> 0)",
             ContractError::InvalidNoticePeriod => "Rolling-bond notice_period_duration must be > 0 and <= duration",
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
+            ContractError::InvariantViolation => {
+                "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
+            }
             ContractError::DuplicateAttestation => "Attestation already exists from this attester",
             ContractError::AttestationNotFound => "No attestation found for the given key",
             ContractError::AttestationAlreadyRevoked => "Attestation has already been revoked",

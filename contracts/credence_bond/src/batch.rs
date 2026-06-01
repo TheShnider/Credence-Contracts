@@ -184,6 +184,8 @@ pub fn create_batch_bonds(e: &Env, params_list: Vec<BatchBondParams>) -> BatchBo
     e.events()
         .publish((Symbol::new(e, "batch_bonds_created"),), result.clone());
 
+    crate::invariants::assert_self_consistent(e);
+
     result
 }
 

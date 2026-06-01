@@ -394,3 +394,30 @@ pub fn emit_parameter_updated(
     e.events().publish(topics, (old_value, new_value));
 }
 
+/// Emitted when post-write drift detection finds inconsistent bond or attestation state.
+///
+/// # Topics (Indexed)
+/// * `Symbol` - `"bond_drift_detected"`
+/// * `Address` - Subject identity (bond owner or attestation subject)
+///
+/// # Data
+/// * [`crate::invariants::BondDriftKind`] - Which invariant failed
+/// * `i128` - `bonded_amount` at detection time
+/// * `i128` - `slashed_amount` at detection time
+/// * `u32` - `SubjectAttestationCount` value (0 if N/A)
+/// * `u32` - `SubjectAttestations` list length (0 if N/A)
+pub fn emit_bond_drift_detected(e: &Env, details: &crate::invariants::BondDriftDetails) {
+    let topics = (
+        Symbol::new(e, "bond_drift_detected"),
+        details.subject.clone(),
+    );
+    let data = (
+        details.kind.clone(),
+        details.bonded_amount,
+        details.slashed_amount,
+        details.attestation_count,
+        details.attestation_list_len,
+    );
+    e.events().publish(topics, data);
+}
+

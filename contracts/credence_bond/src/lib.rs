@@ -1,21 +1,18 @@
 #![no_std]
 
-#402--Contracts]-Bond--differential-test-harness-comparing-ours.rs/base.rs/theirs.rs-against-credence_bond-crate-FIX
-pub mod early_exit_penalty;
-pub mod nonce;
-pub mod rolling_bond;
-pub mod slashing;
-pub mod tiered_bond;
-pub mod weighted_attestation;
-
+mod batch;
+mod claims;
 mod early_exit_penalty;
+mod events;
+mod invariants;
 mod migration;
 mod nonce;
 mod rolling_bond;
+mod same_ledger_liquidation_guard;
+mod slash_history;
 mod slashing;
 mod tiered_bond;
 mod weighted_attestation;
-main
 
 #[path = "types/mod.rs"]
 pub mod types;
@@ -60,10 +57,6 @@ pub struct IdentityBond {
     pub notice_period_duration: u64,
 }
 
-#402--Contracts]-Bond--differential-test-harness-comparing-ours.rs/base.rs/theirs.rs-against-credence_bond-crate-FIX
-
-
-main
 // Re-export attestation type for external callers.
 pub use types::Attestation;
 
@@ -201,6 +194,7 @@ impl CredenceBond {
         bump_instance_ttl(&e);
         let tier = tiered_bond::get_tier_for_amount(amount);
         tiered_bond::emit_tier_change_if_needed(&e, &identity, BondTier::Bronze, tier);
+        invariants::assert_self_consistent(&e);
         bond
     }
 
@@ -282,11 +276,19 @@ impl CredenceBond {
         attestations.push_back(id);
         e.storage().instance().set(&subject_key, &attestations);
 
+        let count_key = DataKey::SubjectAttestationCount(subject.clone());
+        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
+        e.storage()
+            .instance()
+            .set(&count_key, &count.saturating_add(1));
+        bump_instance_ttl(&e);
+
         e.events().publish(
             (Symbol::new(&e, "attestation_added"), subject.clone()),
             (id, attester.clone(), attestation_data.clone()),
         );
 
+        invariants::assert_self_consistent_for_subject(&e, &subject);
         attestation
     }
 
@@ -334,6 +336,7 @@ impl CredenceBond {
             ),
             (attestation_id, attester),
         );
+        invariants::assert_self_consistent_for_subject(&e, &attestation.identity);
     }
 
     /// Get an attestation by ID.
@@ -432,11 +435,8 @@ impl CredenceBond {
             if e.ledger().timestamp() < earliest {
                 panic!("notice period not elapsed");
             }
- #402--Contracts]-Bond--differential-test-harness-comparing-ours.rs/base.rs/theirs.rs-against-credence_bond-crate-FIX
-
         } else if e.ledger().timestamp() < bond.bond_start.saturating_add(bond.bond_duration) {
             panic_with_error!(e, ContractError::LockupNotExpired);
-main
         }
 
         let available = bond
@@ -457,6 +457,7 @@ main
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
+        invariants::assert_self_consistent(&e);
         bond
     }
 
@@ -507,6 +508,7 @@ main
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
+        invariants::assert_self_consistent(&e);
         bond
     }
 
@@ -531,6 +533,7 @@ main
             (Symbol::new(&e, "withdrawal_requested"),),
             (bond.identity.clone(), bond.withdrawal_requested_at),
         );
+        invariants::assert_self_consistent(&e);
         bond
     }
 
@@ -559,6 +562,7 @@ main
             (Symbol::new(&e, "bond_renewed"),),
             (bond.identity.clone(), bond.bond_start, bond.bond_duration),
         );
+        invariants::assert_self_consistent(&e);
         bond
     }
 
@@ -589,6 +593,7 @@ main
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
+        invariants::assert_self_consistent(&e);
         bond
     }
 
@@ -614,6 +619,7 @@ main
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
+        invariants::assert_self_consistent(&e);
         bond
     }
 
@@ -677,6 +683,7 @@ main
         };
         e.storage().instance().set(&bond_key, &updated);
         bump_instance_ttl(&e);
+        invariants::assert_self_consistent(&e);
 
         /// chaos: external callback panic must result in atomic state revert and lock release.
         let cb_key = Symbol::new(&e, "callback");
@@ -736,6 +743,7 @@ main
             notice_period_duration: bond.notice_period_duration,
         };
         e.storage().instance().set(&bond_key, &updated);
+        invariants::assert_self_consistent(&e);
 
         let cb_key = Symbol::new(&e, "callback");
         if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
@@ -864,6 +872,7 @@ pub fn create_bond(
 }
 
 #[cfg(test)]
+mod bond_validation_tests {
     use super::*;
 
     #[test]
@@ -1018,6 +1027,9 @@ pub fn create_bond(
         assert_eq!(err, ContractError::InvalidBondDuration);
     }
 }
+
+#[cfg(test)]
+mod test_bond_drift;
 
 #[cfg(test)]
 pub mod fork_ours;
