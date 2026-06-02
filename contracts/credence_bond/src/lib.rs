@@ -1,7 +1,5 @@
 #![no_std]
 
-mod batch;
-mod claims;
 mod early_exit_penalty;
 mod events;
 mod invariants;
@@ -1511,7 +1509,7 @@ pub fn create_bond(
 }
 
 #[cfg(test)]
-mod bond_validation_tests {
+mod tests {
     use super::*;
 
     #[test]

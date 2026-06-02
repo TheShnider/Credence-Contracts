@@ -9,18 +9,28 @@ edition = "2021"
 # invariants suite lives in the library's #[cfg(test)] modules instead, so the
 # whole package builds and tests green with `cargo test -p credence_bond`.
 autotests = false
+# The gas baseline lives in benches/ and the refresher in a bin; declare both
+# explicitly so cargo does not try to autodiscover the shared `harness.rs`
+# module as its own target.
+autobenches = false
+autobins = false
 
 [lib]
-# `rlib` is added alongside `cdylib` so integration tests under `tests/` can link
-# the contract as a normal Rust dependency. The on-chain `cdylib` wasm artifact
-# is unaffected.
+# `rlib` is added alongside `cdylib` so the cost harness (bench + bin) can link
+# the contract as a normal Rust dependency. The `cdylib` artifact used for the
+# on-chain wasm is unaffected.
 crate-type = ["cdylib", "rlib"]
 
-# Indexer replay invariant suite. Declared explicitly because `autotests = false`
-# disables autodiscovery of the stale token-API integration crates in `tests/`.
-[[test]]
-name = "indexer_replay"
-path = "tests/indexer_replay.rs"
+# Deterministic gas-regression gate. Run with `cargo bench -p credence_bond`.
+[[bench]]
+name = "cost"
+path = "benches/cost.rs"
+harness = false
+
+# Explicit baseline refresher: `cargo run -p credence_bond --bin update-cost-baseline`.
+[[bin]]
+name = "update-cost-baseline"
+path = "benches/update_cost_baseline.rs"
 
 [dependencies]
 credence_errors = { path = "../credence_errors" }

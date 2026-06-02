@@ -378,8 +378,8 @@ pub enum ContractError {
     VerificationFailed = 507,
 
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
-    // Codes match the note above; kept distinct from the delegation
-    // scheme/verifier errors (504-507) to avoid duplicate discriminants.
+    // Wire-stable: codes documented in the note above; kept distinct from the
+    // delegation scheme/verifier errors (504-507).
     DomainMismatch = 218,
     OwnerMismatch = 219,
     TargetMismatch = 220,
