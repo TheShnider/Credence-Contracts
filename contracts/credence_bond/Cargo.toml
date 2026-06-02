@@ -11,7 +11,16 @@ edition = "2021"
 autotests = false
 
 [lib]
-crate-type = ["cdylib"]
+# `rlib` is added alongside `cdylib` so integration tests under `tests/` can link
+# the contract as a normal Rust dependency. The on-chain `cdylib` wasm artifact
+# is unaffected.
+crate-type = ["cdylib", "rlib"]
+
+# Indexer replay invariant suite. Declared explicitly because `autotests = false`
+# disables autodiscovery of the stale token-API integration crates in `tests/`.
+[[test]]
+name = "indexer_replay"
+path = "tests/indexer_replay.rs"
 
 [dependencies]
 credence_errors = { path = "../credence_errors" }

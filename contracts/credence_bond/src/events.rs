@@ -12,6 +12,15 @@ use soroban_sdk::{Address, Env, String, Symbol};
 /// * `u64` - The duration of the bond in seconds
 /// * `bool` - Whether the bond is rolling
 /// * `u64` - Bond end timestamp (calculated)
+///
+/// # Replay semantics
+/// Genesis event for a bond. A replayer initializes `IdentityBond` from it:
+/// `identity`, `bonded_amount = amount`, `bond_start = start_timestamp`,
+/// `bond_duration = duration`, `is_rolling`, with `slashed_amount = 0` and
+/// `active = true`. There must be exactly one of these per bond, before any
+/// other lifecycle event. Note: `notice_period_duration` is **not** carried
+/// here, so rolling-bond notice periods are not reconstructable from events
+/// alone — see `docs/indexer-replay-contract.md`.
 pub fn emit_bond_created_v2(
     e: &Env,
     identity: &Address,
@@ -69,6 +78,13 @@ pub fn emit_bond_created(
 /// # Data
 /// * `bool` - Whether this increase crossed a tier threshold
 /// * `crate::BondTier` - New bond tier after increase
+///
+/// # Replay semantics
+/// A replayer sets `bonded_amount = new_total` (the authoritative post-increase
+/// balance carried in the topic; `added_amount` is supplied for convenience and
+/// must equal `new_total - previous`). No other field changes. Idempotent only
+/// if applied in stream order — the indexer must not reorder increases against
+/// withdrawals.
 #[allow(dead_code)]
 pub fn emit_bond_increased_v2(
     e: &Env,
@@ -120,6 +136,14 @@ pub fn emit_bond_increased(e: &Env, identity: &Address, added_amount: i128, new_
 /// # Data
 /// * `bool` - Whether this was an early withdrawal (penalty applied)
 /// * `i128` - Penalty amount if early withdrawal
+///
+/// # Replay semantics
+/// A replayer sets `bonded_amount = remaining` (the authoritative post-withdraw
+/// balance). Because `remaining` is absolute, partial, early, and full
+/// withdrawals all replay through the same path. `is_early`/`penalty_amount` are
+/// informational for the indexer and do not alter the reconstructed bond. This
+/// event does **not** by itself flip `active` to `false`; full-exit
+/// deactivation is signalled separately by the withdraw-bond path.
 pub fn emit_bond_withdrawn_v2(
     e: &Env,
     identity: &Address,
@@ -170,6 +194,14 @@ pub fn emit_bond_withdrawn(e: &Env, identity: &Address, amount_withdrawn: i128, 
 /// # Data
 /// * `String` - Reason for the slash
 /// * `bool` - Whether this was a full slash (bond completely liquidated)
+///
+/// # Replay semantics
+/// A replayer sets `slashed_amount = total_slashed` (the cumulative, absolute
+/// figure carried in the topic; the per-event `slash_amount` is the delta and
+/// must equal `total_slashed - previous_slashed`). `bonded_amount` is unchanged
+/// by a slash — withdrawable balance is derived as `bonded_amount -
+/// slashed_amount`. The legacy `bond_slashed` event carries the same numbers and
+/// is ignored by a v2 replayer to avoid double-counting.
 #[allow(clippy::too_many_arguments)]
 pub fn emit_bond_slashed_v2(
     e: &Env,

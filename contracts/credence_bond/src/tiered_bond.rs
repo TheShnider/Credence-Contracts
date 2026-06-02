@@ -32,6 +32,22 @@ pub fn get_tier_for_amount(e: &Env, amount: i128) -> BondTier {
     }
 }
 
+/// Emits `tier_changed` when a bond crosses a tier threshold.
+///
+/// # Topics
+/// * `Symbol` - "tier_changed"
+///
+/// # Data
+/// * `Address` - The identity whose tier changed
+/// * `crate::BondTier` - The new tier
+///
+/// # Replay semantics
+/// **Derived, not authoritative.** A bond's tier is a pure function of
+/// `bonded_amount` (see [`get_tier_for_amount`]), so a replayer recomputes it
+/// from reconstructed state and does not need this event to rebuild
+/// `IdentityBond`. It is emitted for indexer convenience/alerting only and is
+/// safe to ignore during replay; it must never be the sole source of a balance
+/// change.
 pub fn emit_tier_change_if_needed(
     e: &Env,
     identity: &soroban_sdk::Address,
