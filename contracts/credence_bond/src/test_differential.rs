@@ -18,7 +18,10 @@
 //! `fork_divergent` and asserts their tier outputs differ, confirming the
 //! comparison logic is still exercised end-to-end.
 
-use soroban_sdk::{testutils::{Address as _, Ledger as _}, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger as _},
+    Address, Env,
+};
 
 use crate::{CredenceBond, CredenceBondClient, IdentityBond};
 
@@ -37,9 +40,18 @@ struct Pinned {
 }
 
 fn assert_pinned(label: &str, bond: &IdentityBond, p: &Pinned) {
-    assert_eq!(bond.bonded_amount, p.bonded_amount, "[{label}] bonded_amount");
-    assert_eq!(bond.slashed_amount, p.slashed_amount, "[{label}] slashed_amount");
-    assert_eq!(bond.bond_duration, p.bond_duration, "[{label}] bond_duration");
+    assert_eq!(
+        bond.bonded_amount, p.bonded_amount,
+        "[{label}] bonded_amount"
+    );
+    assert_eq!(
+        bond.slashed_amount, p.slashed_amount,
+        "[{label}] slashed_amount"
+    );
+    assert_eq!(
+        bond.bond_duration, p.bond_duration,
+        "[{label}] bond_duration"
+    );
     assert_eq!(bond.active, p.active, "[{label}] active");
     assert_eq!(bond.is_rolling, p.is_rolling, "[{label}] is_rolling");
     assert_eq!(
@@ -191,8 +203,14 @@ fn scenario_rolling_bond_with_renewal() {
     c.renew_if_rolling();
     // apply_renewal sets bond_start = now (5_001) and resets withdrawal_requested_at = 0.
     let bond_after_renew = c.get_identity_state();
-    assert_eq!(bond_after_renew.bond_start, 5_001, "bond_start after renewal");
-    assert_eq!(bond_after_renew.withdrawal_requested_at, 0, "withdrawal_requested_at reset");
+    assert_eq!(
+        bond_after_renew.bond_start, 5_001,
+        "bond_start after renewal"
+    );
+    assert_eq!(
+        bond_after_renew.withdrawal_requested_at, 0,
+        "withdrawal_requested_at reset"
+    );
     assert_eq!(bond_after_renew.bonded_amount, 50_000);
 
     c.request_withdrawal();
@@ -348,7 +366,10 @@ fn scenario_rolling_renew_at_exact_expiry() {
     let bond = c.get_identity_state();
     assert_eq!(bond.bond_start, 3_600, "bond_start after first renewal");
     assert_eq!(bond.bond_duration, 3_600);
-    assert_eq!(bond.withdrawal_requested_at, 0, "withdrawal_requested_at reset by renewal");
+    assert_eq!(
+        bond.withdrawal_requested_at, 0,
+        "withdrawal_requested_at reset by renewal"
+    );
 
     // Past end of renewed period: 3_600 + 3_600 = 7_200; advance past it.
     env.ledger().with_mut(|l| l.timestamp = 7_201);
