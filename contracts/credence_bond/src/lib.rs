@@ -1730,11 +1730,12 @@ mod tests {
 #[cfg(test)]
 mod test_bond_drift;
 
-#[cfg(test)]
-pub mod fork_base;
+/// Deliberately-divergent contract used by `test_differential` to verify the
+/// harness detects behavioural divergence.  Never shipped to mainnet.
 #[cfg(test)]
 pub mod fork_divergent;
+
+/// Regression guard: canonical lifecycle scenarios with pinned expected states,
+/// plus a cross-contract divergence-detection smoke test.
 #[cfg(test)]
-pub mod fork_ours;
-#[cfg(test)]
-pub mod fork_theirs;
+mod test_differential;

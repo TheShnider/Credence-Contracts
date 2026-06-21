@@ -43,7 +43,3 @@ proptest = "1.11.0"
 
 [features]
 default = []
-fork-ours = []
-fork-base = []
-fork-theirs = []
-fork-canonical = []
