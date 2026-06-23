@@ -11,6 +11,9 @@ use crate::pausable;
 
 const CUMULATIVE_SEGMENT: u128 = (i128::MAX as u128) + 1;
 
+/// Default proposal time-to-live in ledger seconds (7 days).
+const DEFAULT_PROPOSAL_TTL: u64 = 7 * 24 * 60 * 60;
+
 /// Fund source for accounting and reporting.
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,6 +34,9 @@ pub struct WithdrawalProposal {
     pub amount: i128,
     /// Ledger timestamp when proposed.
     pub proposed_at: u64,
+    /// Proposal expiry timestamp (proposed_at + ttl). Approvals and execution are
+    /// rejected once now >= expires_at.
+    pub expires_at: u64,
     /// Proposer (signer who created the proposal).
     pub proposer: Address,
     /// True once executed.
@@ -87,6 +93,8 @@ pub enum DataKey {
     MinLiquidity,
     /// The token address managed by the treasury.
     Token,
+    /// Proposal TTL in seconds (default 7 days). Configurable by admin.
+    ProposalTtl,
 }
 
 #[contract]
@@ -193,6 +201,9 @@ impl CredenceTreasury {
             .instance()
             .set(&DataKey::ProposalCounter, &0_u64);
         e.storage().instance().set(&DataKey::MinLiquidity, &0_i128);
+        e.storage()
+            .instance()
+            .set(&DataKey::ProposalTtl, &DEFAULT_PROPOSAL_TTL);
         e.events()
             .publish((Symbol::new(&e, "treasury_initialized"),), admin);
     }
@@ -449,10 +460,24 @@ impl CredenceTreasury {
         e.storage()
             .instance()
             .set(&DataKey::ProposalCounter, &next_id);
+        let proposed_at = e.ledger().timestamp();
+        let ttl: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::ProposalTtl)
+            .unwrap_or(DEFAULT_PROPOSAL_TTL);
+        let expires_at = if ttl == 0 {
+            u64::MAX
+        } else {
+            proposed_at
+                .checked_add(ttl)
+                .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow))
+        };
         let proposal = WithdrawalProposal {
             recipient: recipient.clone(),
             amount,
-            proposed_at: e.ledger().timestamp(),
+            proposed_at,
+            expires_at,
             proposer: proposer.clone(),
             executed: false,
         };
@@ -488,6 +513,13 @@ impl CredenceTreasury {
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
         if proposal.executed {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
+        }
+        if e.ledger().timestamp() >= proposal.expires_at {
+            e.events().publish(
+                (Symbol::new(&e, "treasury_proposal_expired"), proposal_id),
+                (),
+            );
+            panic_with_error!(&e, ContractError::ProposalExpired);
         }
         let already = e
             .storage()
@@ -542,6 +574,13 @@ impl CredenceTreasury {
             .instance()
             .get(&DataKey::Proposal(proposal_id))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
+        if e.ledger().timestamp() >= proposal.expires_at {
+            e.events().publish(
+                (Symbol::new(&e, "treasury_proposal_expired"), proposal_id),
+                (),
+            );
+            panic_with_error!(&e, ContractError::ProposalExpired);
+        }
         if proposal.executed {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
@@ -674,6 +713,30 @@ impl CredenceTreasury {
             .set(&DataKey::MinLiquidity, &min_liquidity);
         e.events()
             .publish((Symbol::new(&e, "min_liquidity_updated"),), min_liquidity);
+    }
+
+    /// Set the proposal TTL (time-to-live) in ledger seconds. Only admin can call.
+    /// Proposals expire `ttl` seconds after they are proposed, after which
+    /// approvals and execution are rejected.
+    /// Pass `0` for no expiry (legacy behaviour).
+    pub fn set_proposal_ttl(e: Env, admin: Address, ttl: u64) {
+        pausable::require_not_paused(&e);
+        let stored_admin = Self::get_admin(e.clone());
+        if admin != stored_admin {
+            panic_with_error!(&e, ContractError::NotAdmin);
+        }
+        admin.require_auth();
+        e.storage().instance().set(&DataKey::ProposalTtl, &ttl);
+        e.events()
+            .publish((Symbol::new(&e, "proposal_ttl_updated"),), ttl);
+    }
+
+    /// Get the current proposal TTL in ledger seconds.
+    pub fn get_proposal_ttl(e: Env) -> u64 {
+        e.storage()
+            .instance()
+            .get(&DataKey::ProposalTtl)
+            .unwrap_or(DEFAULT_PROPOSAL_TTL)
     }
 
     /// Get current minimum liquidity floor.

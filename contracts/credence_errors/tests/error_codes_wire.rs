@@ -62,6 +62,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::InsufficientApprovals as u32, 605);
     assert_eq!(ContractError::InvalidFlashLoanCallback as u32, 606);
     assert_eq!(ContractError::FlashLoanRepaymentFailed as u32, 607);
+    assert_eq!(ContractError::ProposalExpired as u32, 608);
 
     assert_eq!(ContractError::Overflow as u32, 700);
     assert_eq!(ContractError::Underflow as u32, 701);

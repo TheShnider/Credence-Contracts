@@ -445,6 +445,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     FlashLoanRepaymentFailed = 607,
 
+    /// Withdrawal proposal has expired and can no longer be approved or executed.
+    /// Contracts: treasury
+    /// Wire-stable: do not renumber this error code.
+    ProposalExpired = 608,
+
     // --- Arithmetic (700-799) ---
     /// Integer overflow detected during a checked arithmetic operation.
     /// Replaces: .expect("... overflow")
@@ -538,7 +543,8 @@ impl ErrorExt for ContractError {
             | ContractError::ProposalAlreadyExecuted
             | ContractError::InsufficientApprovals
             | ContractError::InvalidFlashLoanCallback
-            | ContractError::FlashLoanRepaymentFailed => ErrorCategory::Treasury,
+            | ContractError::FlashLoanRepaymentFailed
+            | ContractError::ProposalExpired => ErrorCategory::Treasury,
 
             ContractError::Overflow | ContractError::Underflow => ErrorCategory::Arithmetic,
             ContractError::NoPendingAdmin
@@ -652,6 +658,7 @@ impl ErrorExt for ContractError {
             ContractError::FlashLoanRepaymentFailed => {
                 "Flashloan principal plus fee was not fully repaid"
             }
+            ContractError::ProposalExpired => "Withdrawal proposal has expired",
             ContractError::Overflow => "Integer overflow in checked arithmetic",
             ContractError::NoPendingAdmin => "No pending admin transfer exists",
             ContractError::DomainMismatch => "Payload domain tag does not match expected",
