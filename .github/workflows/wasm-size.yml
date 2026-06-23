@@ -37,7 +37,7 @@ jobs:
 
       - name: Build release WASM (deployable contracts)
         run: |
-          cargo build --target wasm32-unknown-unknown --release --locked \
+          cargo build --target wasm32-unknown-unknown --release --locked --lib \
             -p admin \
             -p credence_arbitration \
             -p credence_bond \
