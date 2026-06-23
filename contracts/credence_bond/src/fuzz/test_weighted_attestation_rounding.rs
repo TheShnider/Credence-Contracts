@@ -56,6 +56,41 @@ fn expected_weight(stake: i128, multiplier_bps: u32, max_weight: u32) -> u32 {
         .max(u128::from(DEFAULT_ATTESTATION_WEIGHT)) as u32
 }
 
+#[test]
+fn default_config_and_missing_stake_use_documented_floors() {
+    let e = Env::default();
+    let (client, _admin, attester, contract_id) = setup(&e);
+
+    assert_eq!(
+        client.get_weight_config(),
+        (
+            weighted_attestation::DEFAULT_WEIGHT_MULTIPLIER_BPS,
+            weighted_attestation::DEFAULT_MAX_WEIGHT,
+        )
+    );
+
+    let (stake, weight) = e.as_contract(&contract_id, || {
+        (
+            weighted_attestation::get_attester_stake(&e, &attester),
+            weighted_attestation::compute_weight(&e, &attester),
+        )
+    });
+
+    assert_eq!(stake, 0);
+    assert_eq!(weight, DEFAULT_ATTESTATION_WEIGHT);
+}
+
+#[test]
+#[should_panic(expected = "attester stake cannot be negative")]
+fn negative_attester_stake_is_rejected() {
+    let e = Env::default();
+    let (_client, _admin, attester, contract_id) = setup(&e);
+
+    e.as_contract(&contract_id, || {
+        weighted_attestation::set_attester_stake(&e, &attester, -1);
+    });
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
