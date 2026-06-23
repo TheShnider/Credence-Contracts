@@ -85,3 +85,5 @@ soroban contract deploy \
 ```
 
 See [Stellar Soroban docs](https://developers.stellar.org/docs/smart-contracts) for auth and network setup.
+
+For the full testnet deploy and cross-contract wiring runbook, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
