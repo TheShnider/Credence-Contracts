@@ -36,8 +36,8 @@
 //!
 //! See `docs/bond-invariants.md` for owners and rationale.
 
-#![cfg(test)]
 #![allow(dead_code)]
+#![allow(unexpected_cfgs)]
 
 use crate::{DataKey, IdentityBond};
 use soroban_sdk::{Address, Env, Vec};
