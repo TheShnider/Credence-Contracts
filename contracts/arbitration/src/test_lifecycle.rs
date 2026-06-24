@@ -247,6 +247,84 @@ fn test_invalid_register_negative_weight() {
     assert_eq!(err, ArbitrationError::WeightNotPositive);
 }
 
+// ── quorum tests ──────────────────────────────────────────────────────────────
+
+#[test]
+fn test_resolve_fails_when_weight_quorum_not_met() {
+    let s = setup();
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &1); // weight = 10
+    s.client.set_quorum(&s.admin, &100, &0); // need weight ≥ 100
+    advance(&s.env, 3601);
+    let err = s.client.try_resolve_dispute(&id).unwrap_err().unwrap();
+    assert_eq!(err, ArbitrationError::QuorumNotMet);
+    // Dispute stays Voting — caller can try again later
+    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Voting);
+}
+
+#[test]
+fn test_resolve_fails_when_voter_quorum_not_met() {
+    let s = setup();
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &1); // 1 voter
+    s.client.set_quorum(&s.admin, &0, &2); // need ≥ 2 voters
+    advance(&s.env, 3601);
+    let err = s.client.try_resolve_dispute(&id).unwrap_err().unwrap();
+    assert_eq!(err, ArbitrationError::QuorumNotMet);
+}
+
+#[test]
+fn test_resolve_succeeds_when_both_quorum_conditions_met() {
+    let s = setup();
+    let arb2 = Address::generate(&s.env);
+    s.client.register_arbitrator(&arb2, &5);
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &1); // weight 10, 1 voter
+    s.client.vote(&arb2, &id, &2); // weight 5,  2 voters
+    s.client.set_quorum(&s.admin, &10, &2); // need weight ≥ 10 AND voters ≥ 2
+    advance(&s.env, 3601);
+    let outcome = s.client.resolve_dispute(&id);
+    assert_eq!(outcome, 1); // outcome 1 has weight 10 > weight 5
+    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Resolved);
+}
+
+#[test]
+fn test_resolve_with_weight_quorum_met_but_voter_quorum_not() {
+    let s = setup();
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &1); // weight 10, 1 voter
+    s.client.set_quorum(&s.admin, &10, &2); // weight OK (10≥10), voters NOT (1<2)
+    advance(&s.env, 3601);
+    let err = s.client.try_resolve_dispute(&id).unwrap_err().unwrap();
+    assert_eq!(err, ArbitrationError::QuorumNotMet);
+}
+
+#[test]
+fn test_resolve_with_voter_quorum_met_but_weight_quorum_not() {
+    let s = setup();
+    let arb2 = Address::generate(&s.env);
+    s.client.register_arbitrator(&arb2, &5);
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &1); // weight 10, 1 voter
+    s.client.vote(&arb2, &id, &2); // weight 5,  2 voters
+    s.client.set_quorum(&s.admin, &20, &2); // weight NOT (15<20), voters OK (2≥2)
+    advance(&s.env, 3601);
+    let err = s.client.try_resolve_dispute(&id).unwrap_err().unwrap();
+    assert_eq!(err, ArbitrationError::QuorumNotMet);
+}
+
+#[test]
+fn test_resolve_legacy_quorum_unset_behaviour() {
+    // Default (0, 0) — no quorum gate, preserves legacy behaviour
+    let s = setup();
+    let id = open_dispute(&s);
+    // No quorum configured; resolve with no votes should still work
+    advance(&s.env, 3601);
+    let outcome = s.client.resolve_dispute(&id);
+    assert_eq!(outcome, 0);
+    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Resolved);
+}
+
 // ── require_transition unit tests (status module) ────────────────────────────
 
 #[test]

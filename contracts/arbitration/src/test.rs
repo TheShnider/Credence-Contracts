@@ -301,3 +301,51 @@ fn test_arbitrator_registry_and_pagination() {
     assert_eq!(found_again, true);
     assert_eq!(client.get_arbitrator_weight(&test_arb), 30);
 }
+
+#[test]
+fn test_quorum_configuration_and_query() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let admin = Address::generate(&e);
+    let contract_id = e.register(CredenceArbitration, ());
+    let client = CredenceArbitrationClient::new(&e, &contract_id);
+    client.initialize(&admin);
+
+    // Default quorum
+    assert_eq!(client.get_quorum(), (0i128, 0u32));
+
+    // Set quorum
+    client.set_quorum(&admin, &100, &3);
+    assert_eq!(client.get_quorum(), (100i128, 3u32));
+
+    // Non-admin cannot set quorum
+    let stranger = Address::generate(&e);
+    let err = client
+        .try_set_quorum(&stranger, &50, &1)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, status::ArbitrationError::NotAdmin);
+}
+
+#[test]
+fn test_quorum_single_voter_under_min_voters() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let admin = Address::generate(&e);
+    let arb = Address::generate(&e);
+    let creator = Address::generate(&e);
+    let contract_id = e.register(CredenceArbitration, ());
+    let client = CredenceArbitrationClient::new(&e, &contract_id);
+    client.initialize(&admin);
+    client.register_arbitrator(&arb, &10);
+    client.set_quorum(&admin, &0, &2);
+
+    let dispute_id = client.create_dispute(&creator, &String::from_str(&e, "Q1"), &3600);
+    client.vote(&arb, &dispute_id, &1);
+    advance(&e, 3601);
+    let err = client
+        .try_resolve_dispute(&dispute_id)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, status::ArbitrationError::QuorumNotMet);
+}
