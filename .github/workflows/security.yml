@@ -15,6 +15,11 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 jobs:
   cargo-audit:
     name: Dependency Vulnerability Scan
@@ -40,19 +45,94 @@ jobs:
             ${{ runner.os }}-cargo-audit-
 
       - name: Run cargo audit
+        id: audit
         run: |
-          cargo audit --json > audit-report.json || true
-          cargo audit
-
-      - name: Check for critical vulnerabilities
-        run: |
-          CRITICAL_COUNT=$(jq '[.vulnerabilities.list[] | select(.advisory.severity == "critical")] | length' audit-report.json)
-          echo "Critical vulnerabilities found: $CRITICAL_COUNT"
-          if [ "$CRITICAL_COUNT" -gt 0 ]; then
-            echo "❌ CRITICAL vulnerabilities detected - failing pipeline"
-            exit 1
+          set +e
+          cargo audit --deny warnings --json > audit-report.json
+          AUDIT_STATUS=$?
+          set -e
+          echo "exit_code=$AUDIT_STATUS" >> "$GITHUB_OUTPUT"
+          if [ "$AUDIT_STATUS" -ne 0 ]; then
+            echo "cargo audit --deny warnings reported vulnerabilities or warnings"
           fi
-          echo "✅ No critical vulnerabilities found"
+
+      - name: Generate audit PR comment
+        if: always()
+        run: |
+          if [ ! -s audit-report.json ]; then
+            cat > audit-comment.md <<'EOF'
+          <!-- cargo-audit-report -->
+          ## cargo audit
+
+          `cargo audit --deny warnings` did not produce a JSON report. Check the workflow logs for installation or execution errors.
+          EOF
+            exit 0
+          fi
+
+          VULN_COUNT=$(jq '[.vulnerabilities.list[]?] | length' audit-report.json)
+          WARNING_COUNT=$(jq '[.warnings? // {} | to_entries[]? | .value[]?] | length' audit-report.json)
+
+          {
+            echo "<!-- cargo-audit-report -->"
+            echo "## cargo audit"
+            echo
+            echo "Command: \`cargo audit --deny warnings\`"
+            echo
+            echo "| Result | Count |"
+            echo "| --- | ---: |"
+            echo "| Vulnerabilities | $VULN_COUNT |"
+            echo "| Warnings | $WARNING_COUNT |"
+            echo
+            if [ "$VULN_COUNT" -eq 0 ]; then
+              echo "No dependency vulnerabilities were reported."
+            else
+              echo "### Vulnerabilities"
+              echo
+              jq -r '
+                .vulnerabilities.list[]?
+                | "- **\(.advisory.id)** \(.advisory.title)\n  - Crate: `\(.package.name)` \(.package.version)\n  - Severity: \(.advisory.severity // "unknown")\n  - Patched: \((.versions.patched // []) | join(", ") // "none listed")\n  - URL: \(.advisory.url // "not provided")"
+              ' audit-report.json
+            fi
+            echo
+            echo "Full JSON is attached as the \`cargo-audit-report\` workflow artifact."
+          } > audit-comment.md
+
+          cat audit-comment.md
+
+      - name: Comment audit findings on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- cargo-audit-report -->';
+            const body = fs.readFileSync('audit-comment.md', 'utf8');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.data.find((comment) =>
+              comment.user.type === 'Bot' && comment.body.includes(marker)
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
 
       - name: Upload audit report
         uses: actions/upload-artifact@v4
@@ -61,6 +141,10 @@ jobs:
           name: cargo-audit-report
           path: audit-report.json
           retention-days: 30
+
+      - name: Fail on audit warnings
+        if: steps.audit.outputs.exit_code != '0'
+        run: exit 1
 
   clippy-security:
     name: Static Analysis (Clippy Security Lints)
