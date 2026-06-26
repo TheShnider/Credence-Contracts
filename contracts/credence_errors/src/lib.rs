@@ -511,26 +511,26 @@ pub enum ContractError {
 ///         ContractError variant.
 /// @dev    Use this for structured logging, monitoring, and off-chain display.
 ///
-///         `is_recoverable()` classifies an error as recoverable when the
-///         caller can fix their input or wait for state to change and retry
-///         the same kind of operation successfully (e.g. `AlreadyInitialized`,
-///         `LockupNotExpired`, `InsufficientSignatures`). It returns `false`
-///         for **fatal** errors that indicate either a code-level fault
-///         (`Overflow`, `Underflow`, `InvariantViolation`), a security halt
-///         (`ReentrancyDetected`), a cryptographic failure
-///         (`VerificationFailed`), or a payload binding mismatch
-///         (`DomainMismatch`, `OwnerMismatch`, `TargetMismatch`,
-///         `ContractIdMismatch`). Off-chain clients (indexers, admin CLI,
-///         alerting) should use this signal to decide between
-///         "retry/ignore" vs "alert/halt".
+/// `is_recoverable()` classifies an error as recoverable when the
+/// caller can fix their input or wait for state to change and retry
+/// the same kind of operation successfully (e.g. `AlreadyInitialized`,
+/// `LockupNotExpired`, `InsufficientSignatures`). It returns `false`
+/// for **fatal** errors that indicate either a code-level fault
+/// (`Overflow`, `Underflow`, `InvariantViolation`), a security halt
+/// (`ReentrancyDetected`), a cryptographic failure
+/// (`VerificationFailed`), or a payload binding mismatch
+/// (`DomainMismatch`, `OwnerMismatch`, `TargetMismatch`,
+/// `ContractIdMismatch`). Off-chain clients (indexers, admin CLI,
+/// alerting) should use this signal to decide between
+/// "retry/ignore" vs "alert/halt".
 ///
-///         `is_recoverable()` is metadata only: it does not panic, does not
-///         allocate, and does not touch storage. It does not change any
-///         wire codes, categories, or description strings.
+/// `is_recoverable()` is metadata only: it does not panic, does not
+/// allocate, and does not touch storage. It does not change any
+/// wire codes, categories, or description strings.
 ///
-///         New `ContractError` variants must be added with an explicit
-///         classification — the matching `impl` is exhaustive and the test
-///         suite forces a decision for every variant (see `test_is_recoverable_exhaustive`).
+/// New `ContractError` variants must be added with an explicit
+/// classification — the matching `impl` is exhaustive and the test
+/// suite forces a decision for every variant (see `test_is_recoverable_exhaustive`).
 pub trait ErrorExt {
     /// @return The ErrorCategory bucket this error belongs to.
     fn category(&self) -> ErrorCategory;
@@ -862,7 +862,6 @@ impl ErrorExt for ContractError {
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
-            ContractError::DelegationNotExpired => true,   // wait for expiry then retry
 
             // --- Treasury (600-699): mostly caller-fixable ---
             ContractError::AmountMustBePositive            // supply amount > 0

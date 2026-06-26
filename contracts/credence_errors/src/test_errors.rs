@@ -1211,8 +1211,7 @@ mod tests {
             ContractError::ProposalNotFound => true,     // supply a valid proposal id
             ContractError::ProposalAlreadyExecuted => true, // idempotent
             ContractError::InsufficientApprovals => true, // collect more approvals
-            ContractError::ContractCodeVerificationFailed => false, // code hash mismatch
-            ContractError::DelegationNotExpired => false, // wait for expiry
+            ContractError::CursorOutOfRange => true,
             ContractError::InvalidFlashLoanCallback => false, // bad magic
             ContractError::FlashLoanRepaymentFailed => false, // bad repayment
             ContractError::ProposalExpired => true,
