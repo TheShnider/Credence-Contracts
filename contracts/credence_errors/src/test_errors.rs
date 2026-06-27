@@ -1139,7 +1139,7 @@ mod tests {
             ContractError::ContractPaused => true, // wait for unpause
             ContractError::InvalidPauseAction => true,
             ContractError::InsufficientSignatures => true, // gather more sigs
-            ContractError::AdminSuspended => true,         // wait for suspension
+            ContractError::AdminSuspended => true, // wait for suspension
 
             // Admin Transfer: state-step fixes.
             ContractError::NoPendingAdmin => true,
@@ -1170,7 +1170,7 @@ mod tests {
             ContractError::BondAlreadyExists => true,
             ContractError::InvariantViolation => false, // post-write drift
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
-            ContractError::DomainMismatch => false,     // payload binding
+            ContractError::DomainMismatch => false, // payload binding
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
@@ -1202,17 +1202,15 @@ mod tests {
             ContractError::VerifierNotRegistered => true,
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
-            ContractError::DelegationNotExpired => true,    // wait for expiry then retry
+            ContractError::DelegationNotExpired => true, // wait for expiry then retry
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
-            ContractError::AmountMustBePositive => true, // supply amount > 0
-            ContractError::ThresholdExceedsSigners => true, // lower threshold to <= signer count
-            ContractError::InsufficientTreasuryBalance => true, // top up
-            ContractError::ProposalNotFound => true,     // supply a valid proposal id
-            ContractError::ProposalAlreadyExecuted => true, // idempotent
-            ContractError::InsufficientApprovals => true, // collect more approvals
-            ContractError::ContractCodeVerificationFailed => false, // code hash mismatch
-            ContractError::DelegationNotExpired => false, // wait for expiry
+            ContractError::AmountMustBePositive => true,
+            ContractError::ThresholdExceedsSigners => true,
+            ContractError::InsufficientTreasuryBalance => true,
+            ContractError::ProposalNotFound => true,
+            ContractError::ProposalAlreadyExecuted => true,
+            ContractError::InsufficientApprovals => true,
             ContractError::InvalidFlashLoanCallback => false, // bad magic
             ContractError::FlashLoanRepaymentFailed => false, // bad repayment
             ContractError::ProposalExpired => true,
