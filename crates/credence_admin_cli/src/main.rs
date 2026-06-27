@@ -3,9 +3,9 @@ use clap::{Parser, Subcommand};
 use serde_json::json;
 use soroban_client::{
     account::{Account, AccountBehavior},
-    Options, Server,
     transaction::TransactionBehavior,
     transaction_builder::{TransactionBuilder, TransactionBuilderBehavior},
+    Options, Server,
 };
 use stellar_baselib::{
     address::{Address, AddressTrait},
@@ -29,7 +29,11 @@ use stellar_baselib::{
 )]
 struct Cli {
     /// Soroban RPC endpoint.
-    #[arg(long, env = "CREDENCE_RPC_URL", default_value = "https://soroban-testnet.stellar.org")]
+    #[arg(
+        long,
+        env = "CREDENCE_RPC_URL",
+        default_value = "https://soroban-testnet.stellar.org"
+    )]
     rpc_url: String,
 
     /// Network passphrase. Defaults to testnet.
@@ -118,15 +122,27 @@ fn main() -> Result<()> {
     });
 
     match &cli.command {
-        Commands::BondSetEarlyExitConfig { admin, treasury, bps } => {
+        Commands::BondSetEarlyExitConfig {
+            admin,
+            treasury,
+            bps,
+        } => {
             let args = build_early_exit_args(admin, treasury, *bps)?;
             run(&cli, contract_id, "set_early_exit_config", args)
         }
-        Commands::BondSetWeights { admin, multiplier_bps, max_weight } => {
+        Commands::BondSetWeights {
+            admin,
+            multiplier_bps,
+            max_weight,
+        } => {
             let args = build_weight_args(admin, *multiplier_bps, *max_weight)?;
             run(&cli, contract_id, "set_weight_config", args)
         }
-        Commands::DelegationSetPauseSigner { admin, pause_signer, enabled } => {
+        Commands::DelegationSetPauseSigner {
+            admin,
+            pause_signer,
+            enabled,
+        } => {
             let args = build_pause_signer_args(admin, pause_signer, *enabled)?;
             run(&cli, contract_id, "set_pause_signer", args)
         }
@@ -166,8 +182,7 @@ fn build_pause_signer_args(admin: &str, signer: &str, enabled: bool) -> Result<V
 
 /// Convert a Stellar address string (G… or C…) to an `ScVal::Address`.
 fn addr_to_sc_val(addr: &str) -> Result<ScVal> {
-    let address =
-        Address::new(addr).map_err(|e| anyhow!("invalid address {addr:?}: {e}"))?;
+    let address = Address::new(addr).map_err(|e| anyhow!("invalid address {addr:?}: {e}"))?;
     address
         .to_sc_val()
         .map_err(|e| anyhow!("failed to convert address {addr:?} to ScVal: {e}"))
@@ -191,10 +206,7 @@ fn run(cli: &Cli, contract_id: &str, function: &str, args: Vec<ScVal>) -> Result
             .signer
             .as_deref()
             .ok_or_else(|| anyhow!("--signer / CREDENCE_SIGNER is required with --submit"))?;
-        Some(
-            Keypair::from_secret(secret)
-                .map_err(|e| anyhow!("invalid signer key: {e}"))?,
-        )
+        Some(Keypair::from_secret(secret).map_err(|e| anyhow!("invalid signer key: {e}"))?)
     } else {
         None
     };
@@ -203,25 +215,31 @@ fn run(cli: &Cli, contract_id: &str, function: &str, args: Vec<ScVal>) -> Result
     let source_pub = keypair
         .as_ref()
         .map(|kp| kp.public_key())
-        .unwrap_or_else(|| {
-            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF".to_string()
-        });
+        .unwrap_or_else(|| "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF".to_string());
 
     if cli.submit {
         // --- Live path: fetch account, build, sign, submit ------------------
         let runtime = tokio::runtime::Runtime::new()?;
         runtime.block_on(async {
-            let server = Server::new(&cli.rpc_url, Options { allow_http: false, ..Default::default() })
-                .map_err(|e| anyhow!("RPC connect error: {e:?}"))?;
+            let server = Server::new(
+                &cli.rpc_url,
+                Options {
+                    allow_http: false,
+                    ..Default::default()
+                },
+            )
+            .map_err(|e| anyhow!("RPC connect error: {e:?}"))?;
 
             let mut source_account: Account = server
                 .get_account(&source_pub)
                 .await
                 .map_err(|e| anyhow!("failed to load source account {source_pub}: {e:?}"))?;
 
-            let mut builder =
-                TransactionBuilder::new(&mut source_account, &cli.network, None);
-            builder.fee(1_000_000_u32).set_timeout(30).map_err(|e| anyhow!(e))?;
+            let mut builder = TransactionBuilder::new(&mut source_account, &cli.network, None);
+            builder
+                .fee(1_000_000_u32)
+                .set_timeout(30)
+                .map_err(|e| anyhow!(e))?;
             builder.add_operation(operation);
             let tx = builder.build();
 
@@ -254,9 +272,11 @@ fn run(cli: &Cli, contract_id: &str, function: &str, args: Vec<ScVal>) -> Result
         let mut dummy_account =
             Account::new(&source_pub, "0").map_err(|e| anyhow!("account error: {e:?}"))?;
 
-        let mut builder =
-            TransactionBuilder::new(&mut dummy_account, &cli.network, None);
-        builder.fee(1_000_000_u32).set_timeout(30).map_err(|e| anyhow!(e))?;
+        let mut builder = TransactionBuilder::new(&mut dummy_account, &cli.network, None);
+        builder
+            .fee(1_000_000_u32)
+            .set_timeout(30)
+            .map_err(|e| anyhow!(e))?;
         builder.add_operation(operation);
         let tx = builder.build();
 

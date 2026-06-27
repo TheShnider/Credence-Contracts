@@ -32,7 +32,13 @@ fn setup_env() -> (Env, Address, Address) {
     (env, contract_address, super_admin)
 }
 
-fn add_admin(env: &Env, contract: &Address, caller: &Address, new_admin: &Address, role: AdminRole) {
+fn add_admin(
+    env: &Env,
+    contract: &Address,
+    caller: &Address,
+    new_admin: &Address,
+    role: AdminRole,
+) {
     env.as_contract(contract, || {
         AdminContract::add_admin(env.clone(), caller.clone(), new_admin.clone(), role);
     });
@@ -85,12 +91,7 @@ fn update_admin_role_rejected_when_operator_tries_to_promote() {
 
     env.as_contract(&contract, || {
         // op1 tries to give op2 a higher role — must be rejected.
-        AdminContract::update_admin_role(
-            env.clone(),
-            op1.clone(),
-            op2.clone(),
-            AdminRole::Admin,
-        );
+        AdminContract::update_admin_role(env.clone(), op1.clone(), op2.clone(), AdminRole::Admin);
     });
 }
 
@@ -165,7 +166,13 @@ fn reactivate_admin_rejected_when_caller_does_not_outrank_target() {
     let admin = test_admin(&env);
     let operator = user(&env);
     add_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
-    add_admin(&env, &contract, &super_admin, &operator, AdminRole::Operator);
+    add_admin(
+        &env,
+        &contract,
+        &super_admin,
+        &operator,
+        AdminRole::Operator,
+    );
 
     env.as_contract(&contract, || {
         AdminContract::deactivate_admin(env.clone(), super_admin.clone(), admin.clone());
@@ -221,7 +228,13 @@ fn suspend_admin_rejected_when_caller_does_not_outrank_target() {
     let admin = test_admin(&env);
     let operator = user(&env);
     add_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
-    add_admin(&env, &contract, &super_admin, &operator, AdminRole::Operator);
+    add_admin(
+        &env,
+        &contract,
+        &super_admin,
+        &operator,
+        AdminRole::Operator,
+    );
 
     let until_ts = env.ledger().timestamp() + 3600;
     env.as_contract(&contract, || {
@@ -258,7 +271,13 @@ fn transfer_ownership_rejected_when_caller_is_not_owner() {
     let admin = test_admin(&env);
     let new_super = test_admin(&env);
     add_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
-    add_admin(&env, &contract, &super_admin, &new_super, AdminRole::SuperAdmin);
+    add_admin(
+        &env,
+        &contract,
+        &super_admin,
+        &new_super,
+        AdminRole::SuperAdmin,
+    );
 
     env.as_contract(&contract, || {
         // admin is not the owner — must be rejected.

@@ -1225,6 +1225,9 @@ mod tests {
             ContractError::FlashLoanRepaymentFailed => false, // bad repayment
             ContractError::ProposalExpired => true,
 
+            // Registry pagination: caller can supply a valid cursor.
+            ContractError::CursorOutOfRange => true,
+
             // Arithmetic: code-level impossibility.
             ContractError::Overflow => false,
             ContractError::Underflow => false,
@@ -1322,6 +1325,7 @@ mod tests {
             ContractError::InvalidFlashLoanCallback,
             ContractError::FlashLoanRepaymentFailed,
             ContractError::ProposalExpired,
+            ContractError::CursorOutOfRange,
             ContractError::Overflow,
             ContractError::Underflow,
         ];

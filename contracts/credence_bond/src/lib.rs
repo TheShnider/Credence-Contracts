@@ -223,6 +223,9 @@ pub struct TierThresholds {
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
 
+/// Maximum persistent entry TTL (~6 months at 5 s/ledger; Soroban network cap).
+pub(crate) const PERSISTENT_TTL_MAX: u32 = 3_110_400;
+
 fn bump_instance_ttl(e: &Env) {
     e.storage()
         .instance()
@@ -872,7 +875,9 @@ impl CredenceBond {
 
         // Write updated ID counter and SubjectAttestations once
         e.storage().instance().set(&counter_key, &next_id);
-        e.storage().instance().set(&subject_key, &subject_attestations);
+        e.storage()
+            .instance()
+            .set(&subject_key, &subject_attestations);
 
         // Update SubjectAttestationCount
         let count_key = DataKey::SubjectAttestationCount(subject.clone());
@@ -922,6 +927,22 @@ impl CredenceBond {
             attestation_data: attestation.attestation_data.clone(),
         };
         e.storage().instance().remove(&dedup_key);
+
+        // Remove the ID from SubjectAttestations so list length stays in sync with count.
+        let subject_list_key = DataKey::SubjectAttestations(attestation.identity.clone());
+        let ids: Vec<u64> = e
+            .storage()
+            .instance()
+            .get(&subject_list_key)
+            .unwrap_or(Vec::new(&e));
+        let mut new_ids = Vec::new(&e);
+        for i in 0..ids.len() {
+            let v = ids.get(i).unwrap();
+            if v != attestation_id {
+                new_ids.push_back(v);
+            }
+        }
+        e.storage().instance().set(&subject_list_key, &new_ids);
 
         let count_key = DataKey::SubjectAttestationCount(attestation.identity.clone());
         let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
@@ -2175,3 +2196,7 @@ mod test_differential;
 
 #[cfg(test)]
 mod test_attestation_batch;
+
+/// Regression tests for storage TTL bumps (issue #570).
+#[cfg(test)]
+mod test_storage_ttl;

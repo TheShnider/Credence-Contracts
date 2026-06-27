@@ -95,6 +95,14 @@ enum DataKey {
 /// entrypoint that accepts a target `Address` MUST reject it.
 const INVALID_ADDRESS_SENTINEL: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
 #[contract]
 pub struct AdminContract;
 
@@ -114,6 +122,7 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_initialized` with the super admin address
     pub fn initialize(e: Env, super_admin: Address, min_admins: u32, max_admins: u32) {
+        bump_instance_ttl(&e);
         if e.storage().instance().has(&DataKey::Initialized) {
             panic_with_error!(&e, ContractError::AlreadyInitialized);
         }
@@ -205,6 +214,7 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_added` with the new admin information
     pub fn add_admin(e: Env, caller: Address, new_admin: Address, role: AdminRole) -> AdminInfo {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         caller.require_auth();
 
@@ -299,6 +309,7 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_removed` with the removed admin information
     pub fn remove_admin(e: Env, caller: Address, admin_to_remove: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         caller.require_auth();
 
@@ -402,6 +413,7 @@ impl AdminContract {
         admin_address: Address,
         new_role: AdminRole,
     ) -> AdminInfo {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         caller.require_auth();
 
@@ -492,6 +504,7 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_deactivated` with the deactivated admin information
     pub fn deactivate_admin(e: Env, caller: Address, admin_address: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         caller.require_auth();
 
@@ -503,10 +516,9 @@ impl AdminContract {
             .get(&DataKey::AdminInfo(admin_address.clone()))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotAdmin));
 
-        // Verify caller authorization
+        // Verify caller authorization: caller must strictly outrank the target.
         let caller_role = Self::get_role(e.clone(), caller.clone());
-        // Allow deactivation when caller has the same role as the target.
-        if caller_role < admin_info.role {
+        if caller_role <= admin_info.role {
             panic_with_error!(&e, ContractError::NotAdmin);
         }
 
@@ -541,6 +553,7 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_reactivated` with the reactivated admin information
     pub fn reactivate_admin(e: Env, caller: Address, admin_address: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         caller.require_auth();
 
@@ -607,6 +620,7 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_suspended` with `(admin_address, until_ts)`
     pub fn suspend_admin(e: Env, caller: Address, admin: Address, until_ts: u64) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         caller.require_auth();
 
@@ -686,6 +700,7 @@ impl AdminContract {
     /// # Notes
     /// The ownership remains with the current owner until the new owner calls `accept_ownership`.
     pub fn transfer_ownership(e: Env, caller: Address, new_owner: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         caller.require_auth();
 
@@ -750,6 +765,7 @@ impl AdminContract {
     /// This function completes the two-step ownership transfer process.
     /// The caller must be the address that was previously set as pending owner.
     pub fn accept_ownership(e: Env, caller: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         caller.require_auth();
 
@@ -803,6 +819,7 @@ e.events().publish(
     /// # Panics
     /// * If owner has not been set (contract not initialized)
     pub fn get_owner(e: Env) -> Address {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Owner)
@@ -814,6 +831,7 @@ e.events().publish(
     /// # Returns
     /// `Some(address)` if there is a pending owner, `None` otherwise
     pub fn get_pending_owner(e: Env) -> Option<Address> {
+        bump_instance_ttl(&e);
         e.storage().instance().get(&DataKey::PendingOwner)
     }
 
@@ -828,6 +846,7 @@ e.events().publish(
     /// # Panics
     /// * If admin_address is not an admin
     pub fn get_admin_info(e: Env, admin_address: Address) -> AdminInfo {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::AdminInfo(admin_address))
@@ -842,6 +861,7 @@ e.events().publish(
     /// # Returns
     /// The admin role if the address is an admin, panics otherwise
     pub fn get_admin_role(e: Env, address: Address) -> AdminRole {
+        bump_instance_ttl(&e);
         let admin_info: AdminInfo = e
             .storage()
             .instance()
@@ -884,6 +904,7 @@ e.events().publish(
     /// `true` if the address has at least the required role, `false` otherwise.
     /// A suspended admin fails this check until `suspended_until` has passed.
     pub fn has_role_at_least(e: Env, address: Address, required_role: AdminRole) -> bool {
+        bump_instance_ttl(&e);
         match e
             .storage()
             .instance()
@@ -903,6 +924,7 @@ e.events().publish(
     /// # Returns
     /// A `Vec` of all admin addresses
     pub fn get_all_admins(e: Env) -> Vec<Address> {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::AdminList)
@@ -917,6 +939,7 @@ e.events().publish(
     /// # Returns
     /// A `Vec` of admin addresses with the specified role
     pub fn get_admins_by_role(e: Env, role: AdminRole) -> Vec<Address> {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::RoleAdmins(role))
@@ -928,6 +951,7 @@ e.events().publish(
     /// # Returns
     /// The total count of admins
     pub fn get_admin_count(e: Env) -> u32 {
+        bump_instance_ttl(&e);
         Self::get_all_admins(e).len()
     }
 
@@ -936,6 +960,7 @@ e.events().publish(
     /// # Returns
     /// The count of active admins
     pub fn get_active_admin_count(e: Env) -> u32 {
+        bump_instance_ttl(&e);
         let all_admins = Self::get_all_admins(e.clone());
         let mut active_count = 0;
         for admin in all_admins.iter() {
@@ -957,6 +982,7 @@ e.events().publish(
     /// # Returns
     /// A tuple of (min_admins, max_admins)
     pub fn get_config(e: Env) -> (u32, u32) {
+        bump_instance_ttl(&e);
         let min_admins: u32 = e
             .storage()
             .instance()
@@ -974,6 +1000,7 @@ e.events().publish(
 
     /// Get the role of an address (panics if not admin).
     pub fn get_role(e: Env, address: Address) -> AdminRole {
+        bump_instance_ttl(&e);
         let admin_info: AdminInfo = e
             .storage()
             .instance()
@@ -1043,30 +1070,37 @@ mod test;
 #[contractimpl]
 impl AdminContract {
     pub fn is_paused(e: Env) -> bool {
+        bump_instance_ttl(&e);
         pausable::is_paused(&e)
     }
 
     pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::pause(&e, &caller)
     }
 
     pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::unpause(&e, &caller)
     }
 
     pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        bump_instance_ttl(&e);
         pausable::set_pause_signer(&e, &admin, &signer, enabled)
     }
 
     pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        bump_instance_ttl(&e);
         pausable::set_pause_threshold(&e, &admin, threshold)
     }
 
     pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::approve_pause_proposal(&e, &signer, proposal_id)
     }
 
     pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::execute_pause_proposal(&e, proposal_id)
     }
 }

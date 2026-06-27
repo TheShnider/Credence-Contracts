@@ -25,6 +25,14 @@ use soroban_sdk::panic_with_error;
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
 pub mod idempotency;
 
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
 /// Interface identifier expected from Credence bond contracts.
 pub const IFACE_CREDENCE_BOND_V1: u32 = 0x4342_5631;
 
@@ -77,6 +85,7 @@ impl CredenceRegistry {
     /// # Panics
     /// * If contract is already initialized
     pub fn initialize(e: Env, admin: Address) {
+        bump_instance_ttl(&e);
         if e.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&e, ContractError::AlreadyInitialized);
         }
@@ -125,6 +134,7 @@ impl CredenceRegistry {
         bond_contract: Address,
         allow_non_interface: bool,
     ) -> RegistryEntry {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         // Verify admin authorization
         let admin: Address = e
@@ -223,6 +233,7 @@ impl CredenceRegistry {
     /// # Panics
     /// * If identity is not registered
     pub fn get_bond_contract(e: Env, identity: Address) -> RegistryEntry {
+        bump_instance_ttl(&e);
         let key = DataKey::IdentityToBond(identity.clone());
         e.storage()
             .instance()
@@ -241,6 +252,7 @@ impl CredenceRegistry {
     /// # Panics
     /// * If bond contract is not registered
     pub fn get_identity(e: Env, bond_contract: Address) -> Address {
+        bump_instance_ttl(&e);
         let key = DataKey::BondToIdentity(bond_contract.clone());
         e.storage()
             .instance()
@@ -256,6 +268,7 @@ impl CredenceRegistry {
     /// # Returns
     /// `true` if the identity is registered and active, `false` otherwise
     pub fn is_registered(e: Env, identity: Address) -> bool {
+        bump_instance_ttl(&e);
         let key = DataKey::IdentityToBond(identity);
         match e.storage().instance().get::<_, RegistryEntry>(&key) {
             Some(entry) => entry.active,
@@ -276,6 +289,7 @@ impl CredenceRegistry {
     /// # Events
     /// Emits `identity_deactivated` with the updated `RegistryEntry`
     pub fn deactivate(e: Env, identity: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         // Verify admin authorization
         let admin: Address = e
@@ -321,6 +335,7 @@ impl CredenceRegistry {
     /// # Events
     /// Emits `identity_removed` with the removed `RegistryEntry`
     pub fn remove(e: Env, identity: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
 
         let admin: Address = e
@@ -375,6 +390,7 @@ impl CredenceRegistry {
     /// # Events
     /// Emits `identity_reactivated` with the updated `RegistryEntry`
     pub fn reactivate(e: Env, identity: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         // Verify admin authorization
         let admin: Address = e
@@ -408,6 +424,7 @@ impl CredenceRegistry {
     /// # Returns
     /// A `Vec` of all registered identity addresses
     pub fn get_all_identities(e: Env) -> Vec<Address> {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::RegisteredIdentities)
@@ -422,6 +439,7 @@ impl CredenceRegistry {
     /// # Panics
     /// * If contract is not initialized
     pub fn get_admin(e: Env) -> Address {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Admin)
@@ -439,6 +457,7 @@ impl CredenceRegistry {
     /// # Events
     /// Emits `admin_transferred` with the new admin address
     pub fn transfer_admin(e: Env, new_admin: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         // Verify current admin authorization
         let admin: Address = e
@@ -463,6 +482,7 @@ impl CredenceRegistry {
     /// # Returns
     /// The proposal ID if the pause is proposed, `None` if the pause is immediate
     pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::pause(&e, &caller)
     }
 
@@ -474,6 +494,7 @@ impl CredenceRegistry {
     /// # Returns
     /// The proposal ID if the unpause is proposed, `None` if the unpause is immediate
     pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::unpause(&e, &caller)
     }
 
@@ -482,6 +503,7 @@ impl CredenceRegistry {
     /// # Returns
     /// `true` if the contract is paused, `false` otherwise
     pub fn is_paused(e: Env) -> bool {
+        bump_instance_ttl(&e);
         pausable::is_paused(&e)
     }
 
@@ -492,6 +514,7 @@ impl CredenceRegistry {
     /// * `signer` - The signer address
     /// * `enabled` - Whether the signer is enabled
     pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        bump_instance_ttl(&e);
         pausable::set_pause_signer(&e, &admin, &signer, enabled)
     }
 
@@ -501,6 +524,7 @@ impl CredenceRegistry {
     /// * `admin` - The admin address
     /// * `threshold` - The new threshold
     pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        bump_instance_ttl(&e);
         pausable::set_pause_threshold(&e, &admin, threshold)
     }
 
@@ -510,6 +534,7 @@ impl CredenceRegistry {
     /// * `signer` - The signer address
     /// * `proposal_id` - The proposal ID
     pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::approve_pause_proposal(&e, &signer, proposal_id)
     }
 
@@ -518,6 +543,7 @@ impl CredenceRegistry {
     /// # Arguments
     /// * `proposal_id` - The proposal ID
     pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::execute_pause_proposal(&e, proposal_id)
     }
 
@@ -530,6 +556,7 @@ impl CredenceRegistry {
     /// - Admin-only operation (requires admin authorization)
     /// - Used by `register_trustless` to verify that a caller is a genuine bond contract
     pub fn set_bond_code_hash(e: Env, code_hash: soroban_sdk::Bytes) {
+        bump_instance_ttl(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -553,6 +580,7 @@ impl CredenceRegistry {
     /// # Returns
     /// The stored bond code hash, or an empty Bytes if not set
     pub fn get_bond_code_hash(e: Env) -> soroban_sdk::Bytes {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::BondCodeHash)
@@ -589,7 +617,8 @@ impl CredenceRegistry {
     ///
     /// # Events
     /// Emits `bond_registered` with the `RegistryEntry` on successful registration
-    pub fn register_trustless(e: Env, identity: Address, bond_contract: Address) -> RegistryEntry {
+    pub fn register_trustless(e: Env, identity: Address, _bond_contract: Address) -> RegistryEntry {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
 
         // TODO: replace with correct "invoking contract" address accessor for this soroban-sdk version.
