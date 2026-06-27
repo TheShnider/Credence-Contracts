@@ -174,6 +174,8 @@ pub enum DataKey {
     /// Value: `Address`. When absent, `slash()` reverts with
     /// `ContractError::TreasuryNotConfigured`.
     SlashTreasury,
+    /// Whether new borrow creation/top-up operations are currently frozen.
+    /// Value: `bool`.
     /// Governance-controlled flag: when `true`, new bond creation and top-ups
     /// are blocked. Value: `bool`.
     BorrowFrozen,

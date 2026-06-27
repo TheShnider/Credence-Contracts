@@ -3,6 +3,7 @@ extern crate alloc;
 extern crate std;
 use crate::{CredenceBond, CredenceBondClient, DataKey};
 use soroban_sdk::testutils::Address as _;
+use soroban_sdk::{Address, Env, IntoVal, Val};
 use soroban_sdk::{Address, Env, IntoVal, Val, Vec};
 
 fn setup(env: &Env) -> (CredenceBondClient<'_>, Address, Address, Address) {
@@ -27,6 +28,7 @@ struct PrivilegedCase {
 
 fn invoke_transfer_admin(env: &Env, client: &CredenceBondClient<'_>, caller: &Address) {
     let new_admin = Address::generate(env);
+    let args: soroban_sdk::Vec<Val> = (caller.clone(), new_admin.clone()).into_val(env);
     let args: soroban_sdk::Vec<soroban_sdk::Val> =
         (caller.clone(), new_admin.clone()).into_val(env);
     env.mock_auths(&[
@@ -284,6 +286,7 @@ fn test_transfer_admin_rotates_admin_and_rejects_old_admin() {
     let new_admin = Address::generate(&env);
     let treasury = Address::generate(&env);
 
+    let args: soroban_sdk::Vec<Val> = (admin.clone(), new_admin.clone()).into_val(&env);
     let args: soroban_sdk::Vec<soroban_sdk::Val> =
         (admin.clone(), new_admin.clone()).into_val(&env);
     env.mock_auths(&[
