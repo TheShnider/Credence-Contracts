@@ -14,15 +14,9 @@
     clippy::restriction
 )]
 
-use soroban_sdk::{contracterror, contracttype};
-
-/// Represents the role of an entity in the system.
-#[contracttype]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Role {
-    Admin,
-    User,
-}
+use soroban_sdk::contracterror;
+/// Project-wide version constant.
+pub const VERSION: &str = "0.1.0";
 
 /// @title  ErrorCategory
 /// @notice Groups errors by domain for monitoring, alerting, and dashboards.
@@ -550,7 +544,7 @@ pub enum ContractError {
 /// wire codes, categories, or description strings.
 ///
 /// New `ContractError` variants must be added with an explicit
-/// classification — the matching `impl` is exhaustive and the test
+/// classification - the matching `impl` is exhaustive and the test
 /// suite forces a decision for every variant (see `test_is_recoverable_exhaustive`).
 pub trait ErrorExt {
     /// @return The ErrorCategory bucket this error belongs to.
@@ -781,8 +775,6 @@ impl ErrorExt for ContractError {
             ContractError::AdminUnchanged => "Proposed admin is the same as the current admin",
             ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
-            ContractError::BatchTooLarge => "Batch size exceeds the maximum allowed constant",
-            ContractError::EmptyBatch => "Batch input is empty; at least one item is required",
         }
     }
 

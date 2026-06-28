@@ -1,7 +1,6 @@
 #![cfg(test)]
-extern crate alloc;
-extern crate alloc;
-use alloc::format;
+
+use std::format;
 extern crate std;
 
 use crate::{

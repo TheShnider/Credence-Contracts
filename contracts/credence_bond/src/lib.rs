@@ -174,10 +174,6 @@ pub enum DataKey {
     /// Value: `Address`. When absent, `slash()` reverts with
     /// `ContractError::TreasuryNotConfigured`.
     SlashTreasury,
-    /// Whether new borrow creation/top-up operations are currently frozen.
-    /// Value: `bool`.
-    /// Governance-controlled flag: when `true`, new bond creation and top-ups
-    /// are blocked. Value: `bool`.
     BorrowFrozen,
 }
 
@@ -303,6 +299,11 @@ pub struct CredenceBond;
 
 #[contractimpl]
 impl CredenceBond {
+    /// Return the contract version.
+    pub fn version(e: Env) -> String {
+        String::from_str(&e, credence_errors::VERSION)
+    }
+
     /// Initialize the contract with admin authority.
     ///
     /// Errors:
