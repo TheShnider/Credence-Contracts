@@ -1,5 +1,6 @@
 #![no_std]
 
+#[cfg(any(test, feature = "testutils"))]
 mod batch;
 mod claims;
 mod early_exit_penalty;
@@ -198,8 +199,8 @@ fn bump_instance_ttl(e: &Env) {
 /// Tiny enum used as the topic value when emitting `bond_liquidated`. Both
 /// variants are encoded as `Symbol`s: `"fully_slashed"` or `"expired_unrenewed"`.
 /// Stored as constants here so test code can refer to the canonical strings
-/// instead of re-deriving them.
-#[allow(dead_code)]
+/// instead of re-deriving them. Excluded from release WASM.
+#[cfg(any(test, feature = "testutils"))]
 pub mod liquidation_reason {
     /// Bond has been fully slashed (`slashed_amount >= bonded_amount`).
     pub const FULLY_SLASHED: &str = "fully_slashed";
@@ -1999,6 +2000,9 @@ mod test_early_exit_precision;
 #[cfg(test)]
 pub mod fork_divergent;
 
+/// Access-control test helpers used by integration test modules.
+/// Excluded from release WASM.
+#[cfg(test)]
 pub mod test_access_control;
 /// Regression guard: canonical lifecycle scenarios with pinned expected states,
 /// plus a cross-contract divergence-detection smoke test.

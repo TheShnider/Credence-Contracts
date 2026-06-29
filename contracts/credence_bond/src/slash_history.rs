@@ -1,7 +1,5 @@
 use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
 
-use crate::parameters::MAX_QUERY_LIMIT;
-
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SlashRecord {
@@ -20,6 +18,7 @@ pub enum SlashStorageKey {
     SlashRecord(Address, u32),
 }
 
+/// Append a new slash record for `identity`. Called by production slashing code.
 pub fn append_slash_history(
     e: &Env,
     identity: &Address,
@@ -46,54 +45,23 @@ pub fn append_slash_history(
     e.storage().persistent().set(&count_key, &count);
 }
 
-#[allow(dead_code)]
+// ============================================================================
+// Read helpers — available in tests, tooling, and release for the paginated
+// contract entry-points (get_slash_history_page / get_slash_count).
+// ============================================================================
+
+/// Return the number of slash records stored for `identity`. O(1).
 #[must_use]
 pub fn get_slash_count(e: &Env, identity: &Address) -> u32 {
     let key = SlashStorageKey::SlashCount(identity.clone());
     e.storage().persistent().get(&key).unwrap_or(0)
 }
 
-#[allow(dead_code)]
-#[must_use]
-pub fn get_slash_history(e: &Env, identity: &Address) -> Vec<SlashRecord> {
-    let count = get_slash_count(e, identity);
-    let mut history = Vec::new(e);
-
-    for i in 0..count {
-        let key = SlashStorageKey::SlashRecord(identity.clone(), i);
-        if let Some(record) = e.storage().persistent().get(&key) {
-            history.push_back(record);
-        }
-    }
-
-    history
-}
-
-#[allow(dead_code)]
-#[must_use]
-pub fn get_slash_record(e: &Env, identity: &Address, index: u32) -> SlashRecord {
-    let key = SlashStorageKey::SlashRecord(identity.clone(), index);
-    e.storage()
-        .persistent()
-        .get(&key)
-        .unwrap_or_else(|| panic!("slash record not found"))
-}
-
-#[allow(dead_code)]
-#[must_use]
-pub fn get_total_slashed_from_history(e: &Env, identity: &Address) -> i128 {
-    let history = get_slash_history(e, identity);
-    let mut total: i128 = 0;
-    for record in history.iter() {
-        total += record.slash_amount;
-    }
-    total
-}
-
 /// Return a bounded page of slash records for `identity`.
 ///
-/// `limit` is silently clamped to [`MAX_QUERY_LIMIT`] (200). Pass `0` to use
-/// the cap directly. Returns an empty vec when `offset >= get_slash_count(e, identity)`.
+/// `limit` is silently clamped to [`crate::parameters::MAX_QUERY_LIMIT`] (200).
+/// Pass `0` to use the cap directly. Returns an empty vec when
+/// `offset >= get_slash_count(e, identity)`.
 ///
 /// # Arguments
 /// * `e`        - Soroban environment
@@ -110,7 +78,6 @@ pub fn get_total_slashed_from_history(e: &Env, identity: &Address) -> i128 {
 ///     offset += page.len();
 /// }
 /// ```
-#[allow(dead_code)]
 #[must_use]
 pub fn get_slash_history_page(
     e: &Env,
@@ -118,6 +85,8 @@ pub fn get_slash_history_page(
     offset: u32,
     limit: u32,
 ) -> Vec<SlashRecord> {
+    use crate::parameters::MAX_QUERY_LIMIT;
+
     let count = get_slash_count(e, identity);
     let mut page = Vec::new(e);
 
@@ -141,4 +110,55 @@ pub fn get_slash_history_page(
     }
 
     page
+}
+
+// ============================================================================
+// Test/tooling helpers — excluded from release WASM
+// ============================================================================
+
+/// Full-history read helpers. Only needed by tests and off-chain tooling;
+/// excluded from release WASM via `#[cfg(any(test, feature = "testutils"))]`.
+#[cfg(any(test, feature = "testutils"))]
+pub mod testutils {
+    use super::*;
+
+    /// Return the complete slash history for `identity` as a single vec.
+    ///
+    /// For large histories prefer iterating with [`super::get_slash_history_page`].
+    #[must_use]
+    pub fn get_slash_history(e: &Env, identity: &Address) -> Vec<SlashRecord> {
+        let count = super::get_slash_count(e, identity);
+        let mut history = Vec::new(e);
+        for i in 0..count {
+            let key = SlashStorageKey::SlashRecord(identity.clone(), i);
+            if let Some(record) = e.storage().persistent().get(&key) {
+                history.push_back(record);
+            }
+        }
+        history
+    }
+
+    /// Return a single slash record by index.
+    ///
+    /// # Panics
+    /// Panics with `"slash record not found"` when `index >= slash_count`.
+    #[must_use]
+    pub fn get_slash_record(e: &Env, identity: &Address, index: u32) -> SlashRecord {
+        let key = SlashStorageKey::SlashRecord(identity.clone(), index);
+        e.storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| panic!("slash record not found"))
+    }
+
+    /// Sum all slash amounts from history. O(n) — use only in tests.
+    #[must_use]
+    pub fn get_total_slashed_from_history(e: &Env, identity: &Address) -> i128 {
+        let history = get_slash_history(e, identity);
+        let mut total: i128 = 0;
+        for record in history.iter() {
+            total += record.slash_amount;
+        }
+        total
+    }
 }
