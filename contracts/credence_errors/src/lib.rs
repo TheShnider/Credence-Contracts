@@ -524,6 +524,12 @@ pub enum ContractError {
     /// Contracts: treasury
     /// Wire-stable: do not renumber this error code.
     Underflow = 701,
+
+    /// Division (or remainder) by a zero denominator was attempted.
+    /// Replaces: panic!("...") in the safe-math div/ceil_div helpers when `b == 0`.
+    /// Contracts: math, bond
+    /// Wire-stable: do not renumber this error code.
+    DivisionByZero = 702,
 }
 
 /// @title  ErrorExt
@@ -645,7 +651,9 @@ impl ErrorExt for ContractError {
             | ContractError::FlashLoanRepaymentFailed
             | ContractError::ProposalExpired => ErrorCategory::Treasury,
 
-            ContractError::Overflow | ContractError::Underflow => ErrorCategory::Arithmetic,
+            ContractError::Overflow
+            | ContractError::Underflow
+            | ContractError::DivisionByZero => ErrorCategory::Arithmetic,
             ContractError::NoPendingAdmin
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
@@ -782,6 +790,7 @@ impl ErrorExt for ContractError {
             ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
+            ContractError::DivisionByZero => "Division by a zero denominator",
         }
     }
 
@@ -904,7 +913,9 @@ impl ErrorExt for ContractError {
             ContractError::FlashLoanRepaymentFailed => false, // principal+fee mismatch
 
             // --- Arithmetic (700-799): code-level impossibility. ---
-            ContractError::Overflow | ContractError::Underflow => false,
+            ContractError::Overflow
+            | ContractError::Underflow
+            | ContractError::DivisionByZero => false,
         }
     }
 }

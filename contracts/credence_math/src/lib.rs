@@ -14,6 +14,7 @@
     clippy::restriction
 )]
 
+use credence_errors::ContractError;
 use ethnum::U256;
 
 /// Fixed-point denominator for basis-point calculations.
@@ -67,6 +68,12 @@ pub fn div_i128(a: i128, b: i128, msg: &'static str) -> i128 {
 
 /// Checked `i128` ceiling division with a stable panic message.
 /// Computes ceil(a / b) for b > 0, a >= 0.
+///
+/// # Panics
+/// Panics with `msg` on `b == 0` (via the inner `checked_add(b - 1)` /
+/// `checked_div`). Prefer [`ceil_div_checked_i128`] on hot paths where
+/// `b == 0` is reachable so callers receive a typed
+/// [`ContractError::DivisionByZero`] instead of a string panic.
 #[inline]
 #[must_use]
 pub fn ceil_div_i128(a: i128, b: i128, msg: &'static str) -> i128 {
@@ -74,6 +81,70 @@ pub fn ceil_div_i128(a: i128, b: i128, msg: &'static str) -> i128 {
         .unwrap_or_else(|| panic!("{msg}"))
         .checked_div(b)
         .unwrap_or_else(|| panic!("{msg}"))
+}
+
+/// Checked `i128` division returning a typed error instead of panicking.
+///
+/// Returns [`ContractError::DivisionByZero`] when `b == 0`, and
+/// [`ContractError::Overflow`] for the single overflowing case
+/// `i128::MIN / -1`. Otherwise returns `a / b` (truncated toward zero,
+/// matching Rust integer division).
+///
+/// Prefer this over [`div_i128`] on paths where a zero denominator is a
+/// reachable runtime state (e.g. a fully-slashed bond) so the fault maps to
+/// a wire-stable Arithmetic error code rather than a free-form panic string.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::div_checked_i128;
+/// use credence_errors::ContractError;
+///
+/// assert_eq!(div_checked_i128(10, 3), Ok(3));
+/// assert_eq!(div_checked_i128(7, 0), Err(ContractError::DivisionByZero));
+/// ```
+#[inline]
+pub fn div_checked_i128(a: i128, b: i128) -> Result<i128, ContractError> {
+    if b == 0 {
+        return Err(ContractError::DivisionByZero);
+    }
+    a.checked_div(b).ok_or(ContractError::Overflow)
+}
+
+/// Checked `i128` ceiling division returning a typed error instead of panicking.
+///
+/// Computes `ceil(a / b)` for `b > 0`, `a >= 0`. The `b == 0` case is rejected
+/// **before** the `b - 1` subtraction so a zero denominator surfaces as
+/// [`ContractError::DivisionByZero`] rather than being masked as an
+/// [`ContractError::Overflow`] from the subtraction. Returns
+/// [`ContractError::Overflow`] if the intermediate `a + (b - 1)` overflows.
+///
+/// This is the typed counterpart to [`ceil_div_i128`] used on the slash-percentage
+/// hot path `ceil(slashed * 10_000 / bonded)`, where `bonded == 0` is reachable
+/// for a fully-slashed bond.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::ceil_div_checked_i128;
+/// use credence_errors::ContractError;
+///
+/// // bonded = 3, slashed = 2: ceil(2 * 10_000 / 3) = 6667
+/// assert_eq!(ceil_div_checked_i128(2 * 10_000, 3), Ok(6667));
+/// assert_eq!(ceil_div_checked_i128(10, 5), Ok(2));
+/// assert_eq!(ceil_div_checked_i128(0, 5), Ok(0));
+/// // b == 0 is rejected before `b - 1`, so it is DivisionByZero, not Overflow.
+/// assert_eq!(ceil_div_checked_i128(5, 0), Err(ContractError::DivisionByZero));
+/// ```
+#[inline]
+pub fn ceil_div_checked_i128(a: i128, b: i128) -> Result<i128, ContractError> {
+    if b == 0 {
+        return Err(ContractError::DivisionByZero);
+    }
+    a.checked_add(b - 1)
+        .ok_or(ContractError::Overflow)?
+        .checked_div(b)
+        .ok_or(ContractError::Overflow)
 }
 
 /// Compute `a * b / denom` over a 256-bit intermediate.
@@ -208,7 +279,11 @@ pub fn split_bps(
 
 #[cfg(test)]
 mod tests {
-    use super::{bps, bps_round_up, bps_u64, ceil_div_i128, mul_div_i128, split_bps, Rounding};
+    use super::{
+        bps, bps_round_up, bps_u64, ceil_div_checked_i128, ceil_div_i128, div_checked_i128,
+        mul_div_i128, split_bps, Rounding,
+    };
+    use credence_errors::ContractError;
 
     fn legacy_bps_i128(amount: i128, bps: u32) -> i128 {
         amount
@@ -398,5 +473,61 @@ mod tests {
         assert_eq!(ceil_div_i128(2 * 10_000, 3, "test"), 6667);
         // bonded=7, slashed=3: ceil(3*10_000/7) = 4286
         assert_eq!(ceil_div_i128(3 * 10_000, 7, "test"), 4286);
+    }
+
+    // --- div_checked_i128 ---
+
+    #[test]
+    fn div_checked_rejects_zero_denominator() {
+        assert_eq!(div_checked_i128(7, 0), Err(ContractError::DivisionByZero));
+        assert_eq!(div_checked_i128(0, 0), Err(ContractError::DivisionByZero));
+    }
+
+    #[test]
+    fn div_checked_basic_and_b_one() {
+        assert_eq!(div_checked_i128(10, 3), Ok(3));
+        assert_eq!(div_checked_i128(10, 1), Ok(10));
+        assert_eq!(div_checked_i128(i128::MIN, 1), Ok(i128::MIN));
+        assert_eq!(div_checked_i128(-10, 3), Ok(-3));
+    }
+
+    #[test]
+    fn div_checked_min_div_neg_one_overflows() {
+        // i128::MIN / -1 is the sole overflowing division; b != 0 so it must
+        // surface as Overflow, never DivisionByZero.
+        assert_eq!(div_checked_i128(i128::MIN, -1), Err(ContractError::Overflow));
+    }
+
+    // --- ceil_div_checked_i128 ---
+
+    #[test]
+    fn ceil_div_checked_rejects_zero_before_subtraction() {
+        // b == 0 must be DivisionByZero, not Overflow masked by `b - 1`.
+        assert_eq!(
+            ceil_div_checked_i128(5, 0),
+            Err(ContractError::DivisionByZero)
+        );
+        assert_eq!(
+            ceil_div_checked_i128(i128::MIN, 0),
+            Err(ContractError::DivisionByZero)
+        );
+    }
+
+    #[test]
+    fn ceil_div_checked_matches_panicking_helper() {
+        let cases = [(0_i128, 5_i128), (10, 5), (11, 5), (1, 1), (0, 1)];
+        for (a, b) in cases {
+            assert_eq!(ceil_div_checked_i128(a, b), Ok(ceil_div_i128(a, b, "x")));
+        }
+        assert_eq!(ceil_div_checked_i128(2 * 10_000, 3), Ok(6667));
+    }
+
+    #[test]
+    fn ceil_div_checked_intermediate_overflow() {
+        // a + (b - 1) overflows i128 -> Overflow, not a panic.
+        assert_eq!(
+            ceil_div_checked_i128(i128::MAX, 2),
+            Err(ContractError::Overflow)
+        );
     }
 }

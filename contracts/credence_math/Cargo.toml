@@ -9,3 +9,4 @@ crate-type = ["rlib"]
 
 [dependencies]
 ethnum = { version = "1.5.2", default-features = false }
+credence_errors = { path = "../credence_errors" }

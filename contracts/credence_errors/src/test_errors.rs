@@ -75,6 +75,7 @@ mod tests {
             ContractError::FlashLoanRepaymentFailed,
             ContractError::Overflow,
             ContractError::Underflow,
+            ContractError::DivisionByZero,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
         ]
@@ -167,6 +168,7 @@ mod tests {
     fn test_codes_arithmetic() {
         assert_eq!(ContractError::Overflow as u32, 700);
         assert_eq!(ContractError::Underflow as u32, 701);
+        assert_eq!(ContractError::DivisionByZero as u32, 702);
     }
 
     #[test]
@@ -414,7 +416,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            71,
+            72,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1231,6 +1233,7 @@ mod tests {
             // Arithmetic: code-level impossibility.
             ContractError::Overflow => false,
             ContractError::Underflow => false,
+            ContractError::DivisionByZero => false,
         }
     }
 
