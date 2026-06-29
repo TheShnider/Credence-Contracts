@@ -280,6 +280,13 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     CursorOutOfRange = 226,
 
+    /// Idempotency key has already been used for this operation.
+    /// Triggered by: duplicate submissions with the same idempotency key
+    /// (actor, operation, salt) arriving via webhook retries.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    DuplicateIdempotencyKey = 227,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -585,6 +592,7 @@ impl ErrorExt for ContractError {
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
+            | ContractError::DuplicateIdempotencyKey
             | ContractError::InvariantViolation => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -677,6 +685,7 @@ impl ErrorExt for ContractError {
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
+            ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -822,6 +831,7 @@ impl ErrorExt for ContractError {
             ContractError::StorageCapReached => false,    // system capacity; only operator prune fixes it
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
+            ContractError::DuplicateIdempotencyKey => true, // idempotent - safe to retry with same key
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
 
