@@ -18,6 +18,12 @@ use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec};
 /// Maximum number of claims that can be processed in a single batch
 const MAX_BATCH_CLAIMS: u32 = 50;
 
+/// Hard cap on the page size accepted by [`get_pending_claims_page`].
+///
+/// A caller requesting a larger `limit` is silently clamped to this value so a
+/// single read can never exceed the gas/read budget regardless of the argument.
+pub const MAX_PAGE_LIMIT: u32 = 50;
+
 /// Default claim expiry period (30 days in seconds)
 const DEFAULT_CLAIM_EXPIRY: u64 = 30 * 24 * 60 * 60;
 
@@ -219,7 +225,7 @@ fn get_next_claim_id(e: &Env) -> u64 {
     next
 }
 
-/// Get all pending claims for a user
+/// Get all pending claims for a user.
 ///
 /// # Arguments
 /// * `e` - Contract environment
@@ -227,11 +233,83 @@ fn get_next_claim_id(e: &Env) -> u64 {
 ///
 /// # Returns
 /// Vector of pending claims (empty if none)
+///
+/// # Note
+/// This performs an **unbounded** read of the user's entire claim vector. For a
+/// heavily-rewarded user the read can exceed the ledger read budget. Prefer
+/// [`get_pending_claims_page`] for large claim sets; this function is suitable
+/// only when the set is known to be small.
 pub fn get_pending_claims(e: &Env, user: &Address) -> Vec<PendingClaim> {
     e.storage()
         .persistent()
         .get(&DataKey::PendingClaims(user.clone()))
         .unwrap_or(Vec::new(e))
+}
+
+/// Get a bounded, cursor-paginated page of a user's pending claims.
+///
+/// Claims are stored in insertion order, and `claim_id` is assigned from a
+/// monotonically increasing counter, so the stored vector is already ordered by
+/// strictly increasing `claim_id`. This function relies on that ordering rather
+/// than any map-iteration order.
+///
+/// # Cursor contract
+/// * `start_after` — return only claims whose `claim_id > start_after`. Pass `0`
+///   for the first page (claim ids start at 1, so `0` includes everything).
+/// * `limit` — maximum number of claims to return. Hard-capped at
+///   [`MAX_PAGE_LIMIT`]; a larger value is clamped, never honored.
+/// * Returns `(page, next_cursor)` where `next_cursor` is `Some(last_claim_id)`
+///   when more claims may remain (the page filled to `limit`), or `None` when the
+///   page exhausted the remaining claims.
+///
+/// Feeding `next_cursor` back as `start_after` walks the full set in bounded,
+/// resumable pages; concatenating every page reproduces [`get_pending_claims`]
+/// (modulo claims added between calls).
+///
+/// # Arguments
+/// * `e` - Contract environment
+/// * `user` - Address to enumerate claims for
+/// * `start_after` - Exclusive lower bound on `claim_id` (cursor)
+/// * `limit` - Requested page size (clamped to `MAX_PAGE_LIMIT`)
+pub fn get_pending_claims_page(
+    e: &Env,
+    user: &Address,
+    start_after: u64,
+    limit: u32,
+) -> (Vec<PendingClaim>, Option<u64>) {
+    let claims = get_pending_claims(e, user);
+    let capped = limit.min(MAX_PAGE_LIMIT);
+
+    let mut page = Vec::new(e);
+    let mut next_cursor: Option<u64> = None;
+
+    // Empty set or a zero limit yields an empty, exhausted page.
+    if capped == 0 {
+        return (page, None);
+    }
+
+    for claim in claims.iter() {
+        // Deterministic ordering: storage is sorted ascending by claim_id, so
+        // skipping claims at or before the cursor is correct and cheap.
+        if claim.claim_id <= start_after {
+            continue;
+        }
+        if page.len() >= capped {
+            // The page is full and at least one more eligible claim exists, so
+            // hand back a resumable cursor pointing at the last returned id.
+            // (next_cursor was set on the final push below.)
+            break;
+        }
+        next_cursor = Some(claim.claim_id);
+        page.push_back(claim);
+    }
+
+    // If we never filled the page, the set is exhausted — no further pages.
+    if page.len() < capped {
+        next_cursor = None;
+    }
+
+    (page, next_cursor)
 }
 
 /// Get total claimable amount for a user

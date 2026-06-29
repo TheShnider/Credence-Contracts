@@ -1902,6 +1902,30 @@ impl CredenceBond {
         claims::expire_claims_bounded(&e, &user, max_iter)
     }
 
+    /// Cursor-paginated read of a user's pending claims.
+    ///
+    /// Returns a bounded page of claims with `claim_id > start_after` (pass `0`
+    /// for the first page) plus a `next_cursor`. The cursor is the last returned
+    /// `claim_id`, or `None` once the set is exhausted; feed it back as
+    /// `start_after` to resume. `limit` is hard-capped at
+    /// [`claims::MAX_PAGE_LIMIT`] so a caller can never request an unbounded page.
+    ///
+    /// Ordering is deterministic and monotonically increasing by `claim_id`.
+    /// Prefer this over reading the whole claim vector for large claim sets.
+    ///
+    /// # Arguments
+    /// * `user` - Address to enumerate claims for
+    /// * `start_after` - Exclusive `claim_id` cursor (`0` for the first page)
+    /// * `limit` - Requested page size (clamped to `MAX_PAGE_LIMIT`)
+    pub fn get_pending_claims_page(
+        e: Env,
+        user: Address,
+        start_after: u64,
+        limit: u32,
+    ) -> (soroban_sdk::Vec<claims::PendingClaim>, Option<u64>) {
+        claims::get_pending_claims_page(&e, &user, start_after, limit)
+    }
+
     // -----------------------------------------------------------------
     // Internal helpers (lock, treasury config, eligibility predicates)
     // -----------------------------------------------------------------
@@ -2359,3 +2383,8 @@ mod test_attestation_batch;
 /// Regression tests for storage TTL bumps (issue #570).
 #[cfg(test)]
 mod test_storage_ttl;
+
+/// Tests for cursor-paginated get_pending_claims_page (issue #654).
+#[cfg(test)]
+#[path = "test_pending_claims_page.rs"]
+mod test_pending_claims_page;
