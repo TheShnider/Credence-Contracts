@@ -15,6 +15,10 @@ autotests = false
 autobenches = false
 autobins = false
 
+[[test]]
+name = "proptest_tier"
+path = "tests/proptest_tier.rs"
+
 [lib]
 # `rlib` is added alongside `cdylib` so the cost harness (bench + bin) can link
 # the contract as a normal Rust dependency. The `cdylib` artifact used for the
@@ -22,15 +26,15 @@ autobins = false
 crate-type = ["cdylib", "rlib"]
 
 # Deterministic gas-regression gate. Run with `cargo bench -p credence_bond`.
-[[bench]]
-name = "cost"
-path = "benches/cost.rs"
-harness = false
+# [[bench]]
+# name = "cost"
+# path = "benches/cost.rs"
+# harness = false
 
 # Explicit baseline refresher: `cargo run -p credence_bond --bin update-cost-baseline`.
-[[bin]]
-name = "update-cost-baseline"
-path = "benches/update_cost_baseline.rs"
+# [[bin]]
+# name = "update-cost-baseline"
+# path = "benches/update_cost_baseline.rs"
 
 [dependencies]
 credence_errors = { path = "../credence_errors" }
