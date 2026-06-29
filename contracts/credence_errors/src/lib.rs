@@ -134,6 +134,10 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InsufficientSignatures = 108,
 
+    /// Signature deadline has expired (even with grace window).
+    /// Replaces: panic!("signature expired")
+    /// Contracts: bond
+    SignatureExpired = 109,
     /// The target admin is currently suspended (suspended_until > now).
     /// Used by suspend_admin when `until_ts` is not strictly in the future,
     /// and by callers that detect a suspended admin attempting a privileged
@@ -260,6 +264,10 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     BondAlreadyExists = 217,
 
+    /// Token address is not in the set of accepted tokens.
+    /// Triggered by: initialize called with a token not in the accepted tokens set
+    /// Contracts: bond
+    UnauthorizedToken = 218,
     /// Post-write invariant self-check detected bond or attestation accounting drift.
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
@@ -512,6 +520,13 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     ProposalExpired = 608,
 
+    /// Settled withdrawal amount fell below the caller's `min_amount_out`
+    /// slippage bound. Distinct from `InsufficientTreasuryBalance`: the treasury
+    /// had funds, but the realized amount tripped the caller's slippage guard.
+    /// Contracts: treasury
+    /// Wire-stable: do not renumber this error code.
+    SlippageExceeded = 609,
+
     // --- Arithmetic (700-799) ---
     /// Integer overflow detected during a checked arithmetic operation.
     /// Replaces: .expect("... overflow")
@@ -602,6 +617,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
+            | ContractError::UnauthorizedToken => ErrorCategory::Bond,
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
@@ -643,7 +659,8 @@ impl ErrorExt for ContractError {
             | ContractError::InsufficientApprovals
             | ContractError::InvalidFlashLoanCallback
             | ContractError::FlashLoanRepaymentFailed
-            | ContractError::ProposalExpired => ErrorCategory::Treasury,
+            | ContractError::ProposalExpired
+            | ContractError::SlippageExceeded => ErrorCategory::Treasury,
 
             ContractError::Overflow | ContractError::Underflow => ErrorCategory::Arithmetic,
             ContractError::NoPendingAdmin
@@ -697,6 +714,7 @@ impl ErrorExt for ContractError {
             ContractError::InvalidBondDuration => "Bond duration must be strictly positive (> 0)",
             ContractError::InvalidNoticePeriod => "Rolling-bond notice_period_duration must be > 0 and <= duration",
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
+            ContractError::UnauthorizedToken => "Token address is not in the set of accepted tokens",
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
@@ -771,6 +789,9 @@ impl ErrorExt for ContractError {
                 "Flashloan principal plus fee was not fully repaid"
             }
             ContractError::ProposalExpired => "Withdrawal proposal has expired",
+            ContractError::SlippageExceeded => {
+                "Settled withdrawal amount fell below the caller's minimum (slippage)"
+            }
             ContractError::Overflow => "Integer overflow in checked arithmetic",
             ContractError::NoPendingAdmin => "No pending admin transfer exists",
             ContractError::DomainMismatch => "Payload domain tag does not match expected",
@@ -897,7 +918,8 @@ impl ErrorExt for ContractError {
             | ContractError::ProposalNotFound               // supply a valid proposal id
             | ContractError::ProposalAlreadyExecuted        // idempotent
             | ContractError::InsufficientApprovals          // collect more approvals
-            | ContractError::ProposalExpired => true,       // create a new proposal
+            | ContractError::ProposalExpired                // create a new proposal
+            | ContractError::SlippageExceeded => true,      // retry with a looser min_amount_out
 
             // FATAL Treasury flashloan failures: callback contract misbehaved.
             ContractError::InvalidFlashLoanCallback => false, // bad magic value
