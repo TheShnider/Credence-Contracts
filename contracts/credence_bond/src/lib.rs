@@ -66,6 +66,9 @@ mod test_liquidate;
 #[cfg(test)]
 mod test_claim_expiry_sweep;
 
+/// Tests for paginated reads — attestations, slash history, and pending claims.
+#[cfg(test)]
+mod test_pagination;
 /// Authentication boundary tests — every non-view fn must require an auth'd address.
 #[cfg(test)]
 mod test_auth;
@@ -1194,11 +1197,131 @@ impl CredenceBond {
     }
 
     /// Get all attestation IDs for a subject.
+    ///
+    /// **Note:** returns the full unbounded vector. For subjects that may
+    /// accumulate many attestations use [`Self::get_subject_attestations_page`]
+    /// instead so the call stays within the Soroban instruction budget.
     pub fn get_subject_attestations(e: Env, subject: Address) -> Vec<u64> {
         let key = DataKey::SubjectAttestations(subject);
         let v = e.storage().instance().get(&key).unwrap_or(Vec::new(&e));
         bump_instance_ttl(&e);
         v
+    }
+
+    /// Return a bounded page of attestation IDs for a subject.
+    ///
+    /// The `limit` argument is silently clamped to
+    /// `parameters::MAX_QUERY_LIMIT` (200), so a single call can never
+    /// iterate unbounded state and exhaust the Soroban instruction budget.
+    /// Pass `0` for `limit` to use the cap directly.
+    ///
+    /// # Arguments
+    /// * `subject` - The attested identity to query
+    /// * `offset`  - Zero-based start index within the attestation-ID list
+    /// * `limit`   - Max IDs to return; silently clamped to `MAX_QUERY_LIMIT`
+    ///
+    /// # Returns
+    /// A `Vec<u64>` of at most `min(limit, MAX_QUERY_LIMIT)` attestation IDs
+    /// beginning at `offset`. Returns an empty vec when `offset >= total`.
+    ///
+    /// # Example — page through all IDs
+    /// ```no_run
+    /// use credence_bond::{CredenceBond, CredenceBondClient};
+    /// use soroban_sdk::{Env, Address};
+    /// use soroban_sdk::testutils::Address as _;
+    ///
+    /// let e = Env::default();
+    /// e.mock_all_auths();
+    /// let contract_id = e.register(CredenceBond, ());
+    /// let client = CredenceBondClient::new(&e, &contract_id);
+    /// let admin = Address::generate(&e);
+    /// let subject = Address::generate(&e);
+    /// client.initialize(&admin, &None);
+    ///
+    /// let mut offset = 0u32;
+    /// loop {
+    ///     let page = client.get_subject_attestations_page(&subject, &offset, &50_u32);
+    ///     if page.is_empty() { break; }
+    ///     offset += page.len() as u32;
+    /// }
+    /// ```
+    pub fn get_subject_attestations_page(
+        e: Env,
+        subject: Address,
+        offset: u32,
+        limit: u32,
+    ) -> Vec<u64> {
+        let key = DataKey::SubjectAttestations(subject);
+        let all: Vec<u64> = e
+            .storage()
+            .instance()
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(&e));
+        bump_instance_ttl(&e);
+
+        let total = all.len();
+        let mut page = Vec::new(&e);
+
+        if offset >= total {
+            return page;
+        }
+
+        let effective_limit = if limit == 0 {
+            parameters::MAX_QUERY_LIMIT
+        } else {
+            limit.min(parameters::MAX_QUERY_LIMIT)
+        };
+
+        let end = (offset + effective_limit).min(total);
+        for i in offset..end {
+            page.push_back(all.get(i).unwrap());
+        }
+        page
+    }
+
+    /// Return a bounded page of slash records for an identity.
+    ///
+    /// The `limit` argument is silently clamped to
+    /// `parameters::MAX_QUERY_LIMIT` (200). Pass `0` to use the cap directly.
+    ///
+    /// # Arguments
+    /// * `identity` - Address whose slash history to read
+    /// * `offset`   - Zero-based start index
+    /// * `limit`    - Max records to return; clamped to `MAX_QUERY_LIMIT`
+    ///
+    /// # Returns
+    /// A `Vec<SlashRecord>` of at most `min(limit, MAX_QUERY_LIMIT)` entries.
+    /// Returns an empty vec when `offset >= total slash count`.
+    ///
+    /// # Example — page through all slash records
+    /// ```no_run
+    /// use credence_bond::{CredenceBond, CredenceBondClient};
+    /// use soroban_sdk::{Env, Address};
+    /// use soroban_sdk::testutils::Address as _;
+    ///
+    /// let e = Env::default();
+    /// e.mock_all_auths();
+    /// let contract_id = e.register(CredenceBond, ());
+    /// let client = CredenceBondClient::new(&e, &contract_id);
+    /// let admin = Address::generate(&e);
+    /// let identity = Address::generate(&e);
+    /// client.initialize(&admin, &None);
+    ///
+    /// let mut offset = 0u32;
+    /// loop {
+    ///     let page = client.get_slash_history_page(&identity, &offset, &50_u32);
+    ///     if page.is_empty() { break; }
+    ///     offset += page.len() as u32;
+    /// }
+    /// ```
+    pub fn get_slash_history_page(
+        e: Env,
+        identity: Address,
+        offset: u32,
+        limit: u32,
+    ) -> Vec<slash_history::SlashRecord> {
+        bump_instance_ttl(&e);
+        slash_history::get_slash_history_page(&e, &identity, offset, limit)
     }
 
     /// Get attestation count for a subject (identity). O(1).

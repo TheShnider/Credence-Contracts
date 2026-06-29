@@ -13,6 +13,7 @@
 #![allow(dead_code)]
 
 use crate::{events, DataKey};
+use crate::parameters::MAX_QUERY_LIMIT;
 use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec};
 
 /// Maximum number of claims that can be processed in a single batch
@@ -617,4 +618,85 @@ pub fn expire_claims_bounded(e: &Env, user: &Address, max_iter: u32) -> u32 {
     }
 
     expired_count
+}
+
+// ============================================================================
+// Paginated Read Helpers
+// ============================================================================
+
+/// Return the total number of pending (unprocessed, non-expired) claims for
+/// `user`. O(1) — reads the stored Vec length without iterating.
+///
+/// Use this to drive pagination without loading the full claim vector.
+pub fn get_pending_claims_count(e: &Env, user: &Address) -> u32 {
+    e.storage()
+        .persistent()
+        .get::<_, Vec<PendingClaim>>(&DataKey::PendingClaims(user.clone()))
+        .map(|v| v.len())
+        .unwrap_or(0)
+}
+
+/// Return a bounded page of pending claims for `user`.
+///
+/// `limit` is silently clamped to [`MAX_QUERY_LIMIT`] (200). Pass `0` to use
+/// the cap directly. Returns an empty vec when `offset >= total count`.
+///
+/// This is a **pure read** — it does not process or remove claims.
+///
+/// # Arguments
+/// * `e`      - Contract environment
+/// * `user`   - Address whose pending claims to read
+/// * `offset` - Zero-based start index in the stored claim vector
+/// * `limit`  - Maximum claims to return (clamped to `MAX_QUERY_LIMIT`)
+///
+/// # Example
+/// ```text
+/// let mut offset = 0u32;
+/// loop {
+///     let page = get_pending_claims_paginated(e, &user, offset, 50);
+///     if page.is_empty() { break; }
+///     offset += page.len();
+/// }
+/// ```
+pub fn get_pending_claims_paginated(
+    e: &Env,
+    user: &Address,
+    offset: u32,
+    limit: u32,
+) -> Vec<PendingClaim> {
+    let all: Vec<PendingClaim> = e
+        .storage()
+        .persistent()
+        .get(&DataKey::PendingClaims(user.clone()))
+        .unwrap_or_else(|| Vec::new(e));
+
+    let total = all.len();
+    let mut page = Vec::new(e);
+
+    if offset >= total {
+        return page;
+    }
+
+    let effective_limit = if limit == 0 {
+        MAX_QUERY_LIMIT
+    } else {
+        limit.min(MAX_QUERY_LIMIT)
+    };
+
+    let end = (offset + effective_limit).min(total);
+    for i in offset..end {
+        page.push_back(all.get(i).unwrap());
+    }
+    page
+}
+
+/// Look up a single claim by its unique `claim_id`.
+///
+/// # Panics
+/// Panics with `"claim not found"` when no claim with that ID exists.
+pub fn get_claim_by_id(e: &Env, claim_id: u64) -> PendingClaim {
+    e.storage()
+        .persistent()
+        .get(&DataKey::ClaimById(claim_id))
+        .unwrap_or_else(|| panic!("claim not found"))
 }

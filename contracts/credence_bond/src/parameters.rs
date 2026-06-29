@@ -76,6 +76,22 @@ pub const MAX_ATTESTATIONS: u32 = 1_000;
 /// Maximum number of slash history records per identity (ledger entry cap)
 pub const MAX_SLASH_RECORDS: u32 = 1_000;
 
+// ============================================================================
+// Pagination Constants
+// ============================================================================
+
+/// Hard cap on the number of items any single paginated read may return.
+///
+/// Every paginated entry-point (`get_subject_attestations_page`,
+/// `get_slash_history_page`, `get_pending_claims_paginated`) silently clamps
+/// its `limit` argument to this value. A caller that passes a larger limit
+/// receives at most `MAX_QUERY_LIMIT` items — they cannot force the contract
+/// to iterate unbounded state in one instruction budget.
+///
+/// Value 200 matches `liquidation_scanner::MAX_ITER_HARD_CAP` so all
+/// collection-read caps stay consistent across the codebase.
+pub const MAX_QUERY_LIMIT: u32 = 200;
+
 /// Minimum bronze tier threshold (0 = no minimum)
 pub const MIN_BRONZE_THRESHOLD: i128 = 0;
 /// Maximum bronze tier threshold (1 million tokens)
