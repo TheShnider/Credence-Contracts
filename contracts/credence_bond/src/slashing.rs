@@ -203,7 +203,14 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
         "invariant: slashed <= bonded"
     );
 
+    let old_available = bond.bonded_amount.saturating_sub(bond.slashed_amount);
+    let old_tier = crate::tiered_bond::get_tier_for_amount(e, old_available);
+
     bond.slashed_amount = new_slashed;
+
+    let new_available = bond.bonded_amount.saturating_sub(bond.slashed_amount);
+    let new_tier = crate::tiered_bond::get_tier_for_amount(e, new_available);
+    crate::tiered_bond::emit_tier_change_if_needed(e, &bond.identity, old_tier, new_tier);
 
     // 5. Append normalized slash history record
     crate::slash_history::append_slash_history(

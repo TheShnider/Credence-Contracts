@@ -89,6 +89,8 @@ use soroban_sdk::{
     Symbol, Val, Vec,
 };
 
+pub use soroban_sdk;
+
 /// Identity tier based on bonded amount.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -601,7 +603,7 @@ impl CredenceBond {
             return None;
         }
         let available_amount = bond.bonded_amount.saturating_sub(bond.slashed_amount);
-        let tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
+        let tier = tiered_bond::get_tier_for_amount(&e, available_amount);
         Some(BondStateView {
             identity: bond.identity,
             bonded_amount: bond.bonded_amount,
@@ -1524,7 +1526,8 @@ impl CredenceBond {
         if bond.slashed_amount > bond.bonded_amount {
             panic_with_error!(e, ContractError::SlashExceedsBond);
         }
-        let new_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
+        let new_available = bond.bonded_amount.saturating_sub(bond.slashed_amount);
+        let new_tier = tiered_bond::get_tier_for_amount(&e, new_available);
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
 
         e.storage().instance().set(&key, &bond);
@@ -1716,10 +1719,11 @@ impl CredenceBond {
         bond
     }
 
-    /// Get current tier for the bond's bonded amount.
+    /// Get current tier for the bond's available (net) amount.
     pub fn get_tier(e: Env) -> BondTier {
         let bond = Self::get_identity_state(e.clone());
-        tiered_bond::get_tier_for_amount(&e, bond.bonded_amount)
+        let available_amount = bond.bonded_amount.saturating_sub(bond.slashed_amount);
+        tiered_bond::get_tier_for_amount(&e, available_amount)
     }
 
     /// Slash a bond and return the updated bond state.
@@ -1771,6 +1775,10 @@ impl CredenceBond {
         leverage::validate_leverage(&e, new_bonded_amount, max_leverage);
 
         bond.bonded_amount = new_bonded_amount;
+
+        let new_available = bond.bonded_amount.saturating_sub(bond.slashed_amount);
+        let new_tier = tiered_bond::get_tier_for_amount(&e, new_available);
+        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);

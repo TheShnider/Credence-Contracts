@@ -34,6 +34,7 @@ pub fn consume_nonce(e: &Env, identity: &Address, expected_nonce: u64) {
     bump_nonce_ttl(e, &DataKey::Nonce(identity.clone()), 0);
 }
 
+#[allow(dead_code)]
 /// Returns the configured grace window in seconds (0 = strict enforcement).
 ///
 /// Grace is DISABLED by default. When non-zero, signatures are accepted for
