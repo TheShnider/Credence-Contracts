@@ -84,8 +84,8 @@ mod fee_tests;
 
 use credence_errors::ContractError;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, Env, IntoVal, String, Symbol,
-    Val, Vec,
+    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, Env, IntoVal, String,
+    Symbol, Val, Vec,
 };
 
 /// Identity tier based on bonded amount.
@@ -371,6 +371,10 @@ pub enum DataKey {
     /// `ContractError::TreasuryNotConfigured`.
     SlashTreasury,
     BorrowFrozen,
+    /// Idempotency key for externally-triggered admin operations. Value: `bool`.
+    /// Used to prevent duplicate submissions from webhook retries. The key is
+    /// computed as SHA256(actor_address || operation_name || salt_bytes).
+    IdempotencyKey(Bytes),
 }
 
 /// Sub-key namespace for upgrade-authorization storage entries.
@@ -1904,11 +1908,23 @@ impl CredenceBond {
     /// - `ContractError::BondNotFound` / `ContractError::BondNotActive` when bond is missing or inactive.
     /// - `ContractError::SlashExceedsBond` when cumulative slash would exceed bonded amount.
     /// - `ContractError::ReentrancyDetected` when called re-entrantly.
+    /// - `ContractError::DuplicateIdempotencyKey` when the same idempotency key is reused.
     ///
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
-    pub fn slash_bond(e: Env, admin: Address, slash_amount: i128) -> i128 {
+    pub fn slash_bond(
+        e: Env,
+        admin: Address,
+        slash_amount: i128,
+        idempotency_salt: Bytes,
+    ) -> i128 {
         // auth: tree shape [Admin] -> [Bond::slash_bond]; usually direct admin call.
         admin.require_auth();
+
+        // Check idempotency if a salt is provided (non-empty)
+        if idempotency_salt.len() > 0 {
+            idempotency::check_and_record(&e, &admin, &Symbol::new(&e, "slash_bond"), &idempotency_salt);
+        }
+
         Self::acquire_lock(&e);
 
         let stored_admin: Address = e
@@ -1965,8 +1981,19 @@ impl CredenceBond {
     }
 
     /// Collect accumulated protocol fees. Only callable by admin.
-    pub fn collect_fees(e: Env, admin: Address) -> i128 {
+    ///
+    /// Errors:
+    /// - `ContractError::NotAdmin` when caller is not the admin.
+    /// - `ContractError::ReentrancyDetected` when called re-entrantly.
+    /// - `ContractError::DuplicateIdempotencyKey` when the same idempotency key is reused.
+    pub fn collect_fees(e: Env, admin: Address, idempotency_salt: Bytes) -> i128 {
         admin.require_auth();
+
+        // Check idempotency if a salt is provided (non-empty)
+        if idempotency_salt.len() > 0 {
+            idempotency::check_and_record(&e, &admin, &Symbol::new(&e, "collect_fees"), &idempotency_salt);
+        }
+
         Self::acquire_lock(&e);
 
         let stored_admin: Address = e

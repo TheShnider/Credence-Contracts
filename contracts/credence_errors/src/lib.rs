@@ -718,6 +718,7 @@ impl ErrorExt for ContractError {
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
+            ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -870,6 +871,7 @@ impl ErrorExt for ContractError {
             ContractError::StorageCapReached => false,    // system capacity; only operator prune fixes it
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
+            ContractError::DuplicateIdempotencyKey => true, // idempotent - safe to retry with same key
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
 
