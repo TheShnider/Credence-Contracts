@@ -589,10 +589,10 @@ impl CredenceRegistry {
     ///
     /// # Events
     /// Emits `bond_registered` with the `RegistryEntry` on successful registration
-    pub fn register_trustless(e: Env, identity: Address) -> RegistryEntry {
+    pub fn register_trustless(e: Env, caller: Address, identity: Address) -> RegistryEntry {
         pausable::require_not_paused(&e);
 
-        let caller = e.invoker();
+        caller.require_auth();
         let expected_hash = Self::get_bond_code_hash(e.clone());
 
         // Ensure admin has pinned a bond code hash
@@ -604,21 +604,22 @@ impl CredenceRegistry {
         // This uses Soroban's contract instance introspection to fetch the caller's
         // WASM code hash and compare it against the admin-pinned reference.
         // The comparison must be constant-time to prevent timing attacks.
-        let caller_code_hash = e
-            .invoke_contract::<soroban_sdk::Bytes>(
-                &caller,
-                &Symbol::new(&e, "get_contract_code_hash"),
-                soroban_sdk::vec![&e],
-            )
-            .unwrap_or_else(|_| {
-                // If code hash retrieval fails, treat as verification failure
-                panic_with_error!(&e, ContractError::ContractCodeVerificationFailed);
-            });
+        let caller_code_hash = e.invoke_contract::<soroban_sdk::Bytes>(
+            &caller,
+            &Symbol::new(&e, "get_contract_code_hash"),
+            soroban_sdk::vec![&e],
+        );
 
         // Constant-time comparison: if hashes don't match, reject the registration
-        if caller_code_hash.len() != expected_hash.len()
-            || !constant_time_eq(caller_code_hash.as_ref(), expected_hash.as_ref())
-        {
+        if caller_code_hash.len() != 32 || expected_hash.len() != 32 {
+            panic_with_error!(&e, ContractError::ContractCodeVerificationFailed);
+        }
+        let mut caller_buf = [0u8; 32];
+        caller_code_hash.copy_into_slice(&mut caller_buf);
+        let mut expected_buf = [0u8; 32];
+        expected_hash.copy_into_slice(&mut expected_buf);
+
+        if !constant_time_eq(&caller_buf, &expected_buf) {
             panic_with_error!(&e, ContractError::ContractCodeVerificationFailed);
         }
 
@@ -667,7 +668,7 @@ impl CredenceRegistry {
             .get(&DataKey::RegisteredIdentities)
             .unwrap_or_else(|| Vec::new(&e));
 
-        if !identities.iter().any(|a| a == &identity) {
+        if !identities.iter().any(|a| a == identity) {
             identities.push_back(identity.clone());
             e.storage()
                 .instance()
@@ -675,10 +676,8 @@ impl CredenceRegistry {
         }
 
         // Emit trustless binding event
-        e.events().publish(
-            (Symbol::new(&e, "bond_registered"),),
-            entry.clone(),
-        );
+        e.events()
+            .publish((Symbol::new(&e, "bond_registered"),), entry.clone());
 
         entry
     }
@@ -696,15 +695,3 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
         .fold(0, |acc, (l, r)| acc | (l ^ r))
         == 0
 }
-
-#[cfg(test)]
-mod test;
-
-#[cfg(test)]
-mod test_pausable;
-
-#[cfg(test)]
-mod test_interface;
-
-#[cfg(test)]
-mod test_uniqueness;

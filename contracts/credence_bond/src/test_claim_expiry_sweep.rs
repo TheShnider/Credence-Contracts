@@ -36,10 +36,10 @@ fn test_expire_claims_no_expired() {
     env.mock_all_auths();
     let (_client, _admin, _contract_id) = setup_with_contract(&env);
     let user = Address::generate(&env);
-    let now = env.ledger().timestamp();
+    let _now = env.ledger().timestamp();
 
     // Add a claim that expires far in the future
-    let claim_id = claims::add_pending_claim(
+    let _claim_id = claims::add_pending_claim(
         &env,
         &user,
         ClaimType::VerifierReward,
@@ -73,7 +73,7 @@ fn test_expire_claims_all_expired() {
             ClaimType::VerifierReward,
             1000 + (i as i128),
             i as u64,
-            Some(Symbol::new(&env, &format!("claim_{}", i))),
+            Some(Symbol::new(&env, &std::format!("claim_{}", i))),
         );
     }
 
@@ -109,7 +109,7 @@ fn test_expire_claims_bounded_by_max_iter() {
             ClaimType::VerifierReward,
             1000 + (i as i128),
             i as u64,
-            Some(Symbol::new(&env, &format!("claim_{}", i))),
+            Some(Symbol::new(&env, &std::format!("claim_{}", i))),
         );
     }
 
@@ -205,7 +205,7 @@ fn test_expire_claims_mixed_expired_valid() {
             ClaimType::VerifierReward,
             1000 + (i as i128),
             i as u64,
-            Some(Symbol::new(&env, &format!("claim_{}", i))),
+            Some(Symbol::new(&env, &std::format!("claim_{}", i))),
         );
     }
 
@@ -244,7 +244,7 @@ fn test_expire_claims_preserves_valid_claims_order() {
             ClaimType::VerifierReward,
             1000 + (i as i128),
             i as u64,
-            Some(Symbol::new(&env, &format!("claim_{}", i))),
+            Some(Symbol::new(&env, &std::format!("claim_{}", i))),
         );
     }
 
@@ -295,7 +295,7 @@ fn test_expire_claims_idempotent() {
             ClaimType::VerifierReward,
             1000 + (i as i128),
             i as u64,
-            Some(Symbol::new(&env, &format!("claim_{}", i))),
+            Some(Symbol::new(&env, &std::format!("claim_{}", i))),
         );
     }
 
@@ -331,7 +331,7 @@ fn test_expire_claims_max_iter_zero_uses_default() {
             ClaimType::VerifierReward,
             1000 + (i as i128),
             i as u64,
-            Some(Symbol::new(&env, &format!("claim_{}", i))),
+            Some(Symbol::new(&env, &std::format!("claim_{}", i))),
         );
     }
 

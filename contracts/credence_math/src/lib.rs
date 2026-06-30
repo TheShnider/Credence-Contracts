@@ -70,10 +70,7 @@ pub fn div_i128(a: i128, b: i128, msg: &'static str) -> i128 {
 #[inline]
 #[must_use]
 pub fn ceil_div_i128(a: i128, b: i128, msg: &'static str) -> i128 {
-    a.checked_add(b - 1)
-        .expect(msg)
-        .checked_div(b)
-        .expect(msg)
+    a.checked_add(b - 1).expect(msg).checked_div(b).expect(msg)
 }
 
 /// Compute `a * b / denom` over a 256-bit intermediate.

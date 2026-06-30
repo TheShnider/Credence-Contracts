@@ -124,6 +124,7 @@ pub enum DataKey {
     ClaimById(u64),
     /// Upgrade-authorization namespace, sub-keyed by [`UpgradeKey`].
     Upgrade(UpgradeKey),
+    BorrowFrozen,
     // --- Liquidation namespace (appended for issue #366) ---
     /// Treasury recipient for residual funds swept by
     /// [`liquidate`](CredenceBond::liquidate). Value: `Address`. Optional; when
@@ -295,7 +296,11 @@ impl CredenceBond {
             let _ = e.invoke_contract::<()>(
                 &registry,
                 &Symbol::new(&e, "register_trustless"),
-                soroban_sdk::vec![&e, admin.into_val(&e)],
+                soroban_sdk::vec![
+                    &e,
+                    e.current_contract_address().into_val(&e),
+                    admin.into_val(&e)
+                ],
             );
             // Ignore errors during registration to maintain backward compatibility
             // and allow bonds to be initialized without a registry.
@@ -851,10 +856,8 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::AdminUnchanged);
         }
 
-        let zero_str = soroban_sdk::String::from_str(
-            &e,
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        );
+        let zero_str =
+            soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         if new_admin.to_string() == zero_str {
             panic_with_error!(e, ContractError::InvalidAdminAddress);
         }
