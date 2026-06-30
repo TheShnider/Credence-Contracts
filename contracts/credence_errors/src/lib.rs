@@ -350,6 +350,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     ContractCodeVerificationFailed = 407,
 
+    /// Bond contract does not support required interface.
+    /// Replaces: panic!("bond contract does not support required interface")
+    /// Contracts: registry
+    /// Wire-stable: do not renumber this error code.
+    UnsupportedInterface = 408,
     // --- Delegation (500-599) ---
     /// Delegation expiry timestamp must be in the future.
     /// Replaces: panic!("expiry must be in the future")

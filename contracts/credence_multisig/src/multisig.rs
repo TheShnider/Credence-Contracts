@@ -457,7 +457,7 @@ impl CredenceMultiSig {
             .unwrap_or(false);
 
         if already_executed {
-            panic!("operation already executed");
+            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
         // Mark executed globally to prevent exact replay

@@ -150,7 +150,7 @@ impl CredenceRegistry {
                 .unwrap_or(Ok(false))
                 .unwrap_or(false);
             if !supported {
-                panic!("bond contract does not support required interface");
+                panic_with_error!(&e, ContractError::UnsupportedInterface);
             }
         }
 

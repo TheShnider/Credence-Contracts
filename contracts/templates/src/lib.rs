@@ -29,7 +29,8 @@
 
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
+use credence_errors::ContractError;
+use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol};
 
 // ---------------------------------------------------------------------------
 // Storage keys
@@ -75,7 +76,7 @@ impl TemplateContract {
     /// Initialise the contract. Panics if already initialised.
     pub fn initialize(e: Env, admin: Address) {
         if e.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
+            panic_with_error!(&e, ContractError::AlreadyInitialized);
         }
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.events().publish((Symbol::new(&e, "initialized"),), admin);
@@ -139,7 +140,7 @@ impl TemplateContract {
         // Reference expiry pattern: reject and purge on read if expired
         if record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at {
             e.storage().instance().remove(&DataKey::Record(owner));
-            panic!("record expired");
+            panic_with_error!(&e, ContractError::SignatureExpired);
         }
 
         record
