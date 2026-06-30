@@ -1,3 +1,62 @@
+use crate::{DataKey, IdentityBond};
+use credence_errors::ContractError;
+use soroban_sdk::{panic_with_error, Address, Env, IntoVal, Symbol, Val, Vec};
+
+pub fn slash_bond(e: &Env, admin: &Address, slash_amount: i128) -> IdentityBond {
+    admin.require_auth();
+    let stored_admin: Address = e
+        .storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+    if stored_admin != *admin {
+        panic_with_error!(e, ContractError::NotAdmin);
+    }
+
+    let bond_key = DataKey::Bond;
+    let bond: IdentityBond = e
+        .storage()
+        .instance()
+        .get(&bond_key)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+
+    if !bond.active {
+        panic_with_error!(e, ContractError::BondNotActive);
+    }
+
+    let new_slashed = bond.slashed_amount + slash_amount;
+    if new_slashed > bond.bonded_amount {
+        panic_with_error!(e, ContractError::SlashExceedsBond);
+    }
+
+    let updated = IdentityBond {
+        identity: bond.identity.clone(),
+        bonded_amount: bond.bonded_amount,
+        bond_start: bond.bond_start,
+        bond_duration: bond.bond_duration,
+        slashed_amount: new_slashed,
+        active: bond.active,
+        is_rolling: bond.is_rolling,
+        withdrawal_requested_at: bond.withdrawal_requested_at,
+        notice_period_duration: bond.notice_period_duration,
+    };
+    e.storage().instance().set(&bond_key, &updated);
+    e.events().publish(
+        (Symbol::new(e, "bond_slashed"),),
+        (bond.identity.clone(), slash_amount, new_slashed),
+    );
+
+    if let Some(cb_addr) = e
+        .storage()
+        .instance()
+        .get::<_, Address>(&Symbol::new(e, "callback"))
+    {
+        let fn_name = Symbol::new(e, "on_slash");
+        let args: Vec<Val> = Vec::from_array(e, [slash_amount.into_val(e)]);
+        e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
+    }
+
+    updated
 //! Slashing Module
 //!
 //! Implements the core `slash_bond()` functionality for reducing a bond's value as a penalty
@@ -144,7 +203,14 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
         "invariant: slashed <= bonded"
     );
 
+    let old_available = bond.bonded_amount.saturating_sub(bond.slashed_amount);
+    let old_tier = crate::tiered_bond::get_tier_for_amount(e, old_available);
+
     bond.slashed_amount = new_slashed;
+
+    let new_available = bond.bonded_amount.saturating_sub(bond.slashed_amount);
+    let new_tier = crate::tiered_bond::get_tier_for_amount(e, new_available);
+    crate::tiered_bond::emit_tier_change_if_needed(e, &bond.identity, old_tier, new_tier);
 
     // 5. Append normalized slash history record
     crate::slash_history::append_slash_history(
@@ -157,7 +223,9 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
 
     // 6. Add slashing reward claim for the admin (10% of slashed amount)
     if actual_slash_amount > 0 {
-        let reward_amount = actual_slash_amount / 10; // 10% reward
+        let reward_amount = actual_slash_amount
+            .checked_div(10)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow)); // 10% reward
         if reward_amount > 0 {
             let source_id = get_next_slash_id(e);
             crate::claims::add_pending_claim(

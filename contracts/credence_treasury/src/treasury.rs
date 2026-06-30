@@ -4,8 +4,9 @@
 //! Tracks fund sources (protocol fees vs slashed funds) and emits treasury events.
 
 use credence_errors::ContractError;
+use soroban_sdk::String;
 use ethnum::U256;
-use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol};
+use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol, U256 as SdkU256};
 
 use crate::pausable;
 
@@ -107,6 +108,28 @@ fn zero_cumulative_amount() -> CumulativeAmount {
     }
 }
 
+/// Reconstruct a [] as a single [] host value.
+///
+/// # Formula
+///
+/// 
+///
+///  alone overflows for multi-rollover sums, so rollover-safe storage
+/// splits the value across two fields.  This helper is the single canonical
+/// reconstruction so every off-chain consumer uses the same arithmetic.
+///
+/// # Arguments
+/// *  - Contract environment (required to construct the host U256)
+/// *  - The rollover-safe cumulative amount to flatten
+pub fn cumulative_to_u256(e: &Env, amount: &CumulativeAmount) -> SdkU256 {
+    // CUMULATIVE_SEGMENT = 2^127 fits in u128 exactly.
+    let segment = SdkU256::from_u128(e, CUMULATIVE_SEGMENT);
+    let rollovers = SdkU256::from_u128(e, amount.rollovers as u128);
+    // remainder is always in [0, CUMULATIVE_SEGMENT) and fits in u128.
+    let remainder = SdkU256::from_u128(e, amount.remainder as u128);
+    rollovers.mul(&segment).add(&remainder)
+}
+
 fn add_to_cumulative(e: &Env, current: &CumulativeAmount, amount: i128) -> CumulativeAmount {
     let current_remainder = u128::try_from(current.remainder)
         .unwrap_or_else(|_| panic_with_error!(e, ContractError::Underflow));
@@ -165,12 +188,27 @@ pub(crate) fn proportional_deduction(
         .unwrap_or_else(|_| panic_with_error!(e, ContractError::Overflow))
 }
 
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
 #[contractimpl]
 impl CredenceTreasury {
+    /// Return the contract version.
+    pub fn version(e: Env) -> String {
+        String::from_str(&e, credence_errors::VERSION)
+    }
+
     /// Initialize the treasury. Sets the admin; only admin can configure signers and depositors.
+    ///
     /// @param e The contract environment
     /// @param admin Address that can add/remove signers, set threshold, and manage depositors
     pub fn initialize(e: Env, admin: Address, token: Address) {
+        bump_instance_ttl(&e);
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage().instance().set(&DataKey::Token, &token);
@@ -231,6 +269,7 @@ impl CredenceTreasury {
     /// * `UnauthorizedDepositor` if caller is neither admin nor an authorized depositor
     /// * `Overflow` if adding the amount would overflow the balance
     pub fn receive_fee(e: Env, from: Address, amount: i128, source: FundSource) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         from.require_auth();
         if amount <= 0 {
@@ -299,9 +338,15 @@ impl CredenceTreasury {
     }
 
     /// Add an address that can deposit funds via receive_fee (e.g. bond contract).
+    ///
+    /// Idempotent: if  is already registered this is a no-op so callers
+    /// cannot accidentally emit duplicate events or corrupt any future accounting that
+    /// keys on the depositor set size.
+    ///
     /// @param e The contract environment
     /// @param depositor Address to allow as depositor
     pub fn add_depositor(e: Env, depositor: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
@@ -309,6 +354,15 @@ impl CredenceTreasury {
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
         admin.require_auth();
+        // Duplicate-guard: re-registering an existing depositor is a no-op.
+        let already: bool = e
+            .storage()
+            .instance()
+            .get(&DataKey::Depositor(depositor.clone()))
+            .unwrap_or(false);
+        if already {
+            return;
+        }
         e.storage()
             .instance()
             .set(&DataKey::Depositor(depositor.clone()), &true);
@@ -318,6 +372,7 @@ impl CredenceTreasury {
 
     /// Remove a depositor.
     pub fn remove_depositor(e: Env, depositor: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
@@ -333,7 +388,13 @@ impl CredenceTreasury {
     }
 
     /// Add a signer for multi-sig withdrawals. Threshold must be <= signer count after add.
+    ///
+    /// Idempotent: if  is already in the signer set this is a no-op.
+    /// This invariant keeps  exactly equal to the distinct signer set size,
+    /// which is required for the  gate in 
+    /// and  to remain meaningful.
     pub fn add_signer(e: Env, signer: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
@@ -341,6 +402,9 @@ impl CredenceTreasury {
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
         admin.require_auth();
+        // Duplicate-guard: SignerCount must stay in lockstep with the distinct signer set.
+        // Re-adding an existing signer would double-increment the count, potentially
+        // making the configured threshold unreachable (DoS) or structurally weaker.
         let already = e
             .storage()
             .instance()
@@ -369,6 +433,7 @@ impl CredenceTreasury {
 
     /// Remove a signer. Threshold is auto-capped to new signer count if needed.
     pub fn remove_signer(e: Env, signer: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
@@ -406,6 +471,7 @@ impl CredenceTreasury {
 
     /// Set the number of approvals required to execute a withdrawal. Must be <= signer count.
     pub fn set_threshold(e: Env, threshold: u32) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
@@ -433,6 +499,7 @@ impl CredenceTreasury {
     /// Propose a withdrawal. Only a signer can propose. Creates a proposal that can be approved and executed.
     /// @return proposal_id The id of the new proposal
     pub fn propose_withdrawal(e: Env, proposer: Address, recipient: Address, amount: i128) -> u64 {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         proposer.require_auth();
         let is_signer = e
@@ -501,6 +568,7 @@ impl CredenceTreasury {
 
     /// Approve a withdrawal proposal. Only signers can approve. When approval count >= threshold, anyone can call execute_withdrawal.
     pub fn approve_withdrawal(e: Env, approver: Address, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         approver.require_auth();
         let is_signer = e
@@ -563,16 +631,24 @@ impl CredenceTreasury {
     /// # Arguments
     /// * `proposal_id`   - ID of the approved withdrawal proposal.
     /// * `min_amount_out` - Caller-provided minimum acceptable settlement amount.
-    ///                      Reverts with "slippage: received amount below minimum" when
-    ///                      the proposal amount is less than this value, protecting the
+    ///                      Reverts with `SlippageExceeded` when the realized
+    ///                      `actual_amount` is less than this value, protecting the
     ///                      caller against unfavorable price movement between proposal
     ///                      creation and execution.  Pass `0` to skip the check.
+    ///
+    /// # Failure modes
+    /// This path distinguishes two failures that previously shared one code:
+    /// * `InsufficientTreasuryBalance` - the treasury lacks funds or the
+    ///   withdrawal would breach the `MinLiquidity` floor (operator must top up).
+    /// * `SlippageExceeded` - the treasury had funds but the settled amount fell
+    ///   below `min_amount_out` (caller should retry with a looser bound).
     ///
     /// # Events
     /// Emits `treasury_withdrawal_executed` with `(recipient, expected, actual)` so
     /// off-chain observers can detect any discrepancy between the proposed and settled
     /// amounts.
     pub fn execute_withdrawal(e: Env, proposal_id: u64, min_amount_out: i128) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         let mut proposal: WithdrawalProposal = e
             .storage()
@@ -633,9 +709,13 @@ impl CredenceTreasury {
             .checked_sub(recipient_balance_before)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
 
-        // Slippage guard: revert if the settled amount falls below the caller's threshold.
+        // Slippage guard: revert if the settled amount falls below the caller's
+        // threshold. This is a distinct failure mode from a balance/liquidity
+        // shortfall (which raises `InsufficientTreasuryBalance` above): here the
+        // treasury had funds but the realized amount tripped the caller's bound,
+        // so callers and indexers must be able to tell the two apart.
         if actual_amount < min_amount_out {
-            panic_with_error!(&e, ContractError::InsufficientTreasuryBalance);
+            panic_with_error!(&e, ContractError::SlippageExceeded);
         }
 
         let new_total = total
@@ -685,6 +765,7 @@ impl CredenceTreasury {
 
     /// Returns the configured token address.
     pub fn get_token(e: Env) -> Address {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Token)
@@ -693,6 +774,7 @@ impl CredenceTreasury {
 
     /// Update the token address. Only admin can call.
     pub fn set_token(e: Env, admin: Address, token: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         let stored_admin = Self::get_admin(e.clone());
         if admin != stored_admin {
@@ -706,6 +788,7 @@ impl CredenceTreasury {
 
     /// Set the minimum liquidity floor. Only admin can call.
     pub fn set_min_liquidity(e: Env, admin: Address, min_liquidity: i128) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         let stored_admin = Self::get_admin(e.clone());
         if admin != stored_admin {
@@ -725,6 +808,7 @@ impl CredenceTreasury {
     /// approvals and execution are rejected.
     /// Pass `0` for no expiry (legacy behaviour).
     pub fn set_proposal_ttl(e: Env, admin: Address, ttl: u64) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         let stored_admin = Self::get_admin(e.clone());
         if admin != stored_admin {
@@ -738,6 +822,7 @@ impl CredenceTreasury {
 
     /// Get the current proposal TTL in ledger seconds.
     pub fn get_proposal_ttl(e: Env) -> u64 {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::ProposalTtl)
@@ -746,6 +831,7 @@ impl CredenceTreasury {
 
     /// Get current minimum liquidity floor.
     pub fn get_min_liquidity(e: Env) -> i128 {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::MinLiquidity)
@@ -754,6 +840,7 @@ impl CredenceTreasury {
 
     /// Get total treasury balance.
     pub fn get_balance(e: Env) -> i128 {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::TotalBalance)
@@ -762,6 +849,7 @@ impl CredenceTreasury {
 
     /// Get the currently available balance attributed to a fund source.
     pub fn get_balance_by_source(e: Env, source: FundSource) -> i128 {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::BalanceBySource(source))
@@ -770,6 +858,7 @@ impl CredenceTreasury {
 
     /// Get the lifetime cumulative amount received across all sources.
     pub fn get_cumulative_received(e: Env) -> CumulativeAmount {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::CumulativeReceived)
@@ -778,14 +867,51 @@ impl CredenceTreasury {
 
     /// Get the lifetime cumulative amount received for a specific source.
     pub fn get_cumulative_by_source(e: Env, source: FundSource) -> CumulativeAmount {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::CumulativeReceivedBySource(source))
             .unwrap_or_else(zero_cumulative_amount)
     }
 
+    /// Get the lifetime cumulative received amount across all sources as a single [].
+    ///
+    /// Equivalent to  but flattens the rollover/remainder
+    /// accounting into one comparable value using []:
+    ///
+    /// 
+    ///
+    /// Use this instead of [] when you need a single value
+    /// for comparisons, dashboards, or indexers — it is the canonical on-chain source
+    /// of truth for the rollover reconstruction formula.
+    pub fn get_cumulative_received_u256(e: Env) -> SdkU256 {
+        bump_instance_ttl(&e);
+        let amount: CumulativeAmount = e
+            .storage()
+            .instance()
+            .get(&DataKey::CumulativeReceived)
+            .unwrap_or_else(zero_cumulative_amount);
+        cumulative_to_u256(&e, &amount)
+    }
+
+    /// Get the lifetime cumulative received amount for a specific [] as a [].
+    ///
+    /// Per-source variant of [].  The two sources
+    /// ( + ) always reconcile with the total returned by
+    /// [].
+    pub fn get_cumulative_by_source_u256(e: Env, source: FundSource) -> SdkU256 {
+        bump_instance_ttl(&e);
+        let amount: CumulativeAmount = e
+            .storage()
+            .instance()
+            .get(&DataKey::CumulativeReceivedBySource(source))
+            .unwrap_or_else(zero_cumulative_amount);
+        cumulative_to_u256(&e, &amount)
+    }
+
     /// Get admin address.
     pub fn get_admin(e: Env) -> Address {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Admin)
@@ -794,6 +920,7 @@ impl CredenceTreasury {
 
     /// Check if an address is an authorized depositor.
     pub fn is_depositor(e: Env, address: Address) -> bool {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Depositor(address))
@@ -802,6 +929,7 @@ impl CredenceTreasury {
 
     /// Check if an address is a signer.
     pub fn is_signer(e: Env, address: Address) -> bool {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Signer(address))
@@ -810,11 +938,13 @@ impl CredenceTreasury {
 
     /// Get current approval threshold.
     pub fn get_threshold(e: Env) -> u32 {
+        bump_instance_ttl(&e);
         e.storage().instance().get(&DataKey::Threshold).unwrap_or(0)
     }
 
     /// Get a withdrawal proposal by id.
     pub fn get_proposal(e: Env, proposal_id: u64) -> WithdrawalProposal {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Proposal(proposal_id))
@@ -823,6 +953,7 @@ impl CredenceTreasury {
 
     /// Get approval count for a proposal.
     pub fn get_approval_count(e: Env, proposal_id: u64) -> u32 {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::ApprovalCount(proposal_id))
@@ -831,6 +962,7 @@ impl CredenceTreasury {
 
     /// Check if a signer has approved a proposal.
     pub fn has_approved(e: Env, proposal_id: u64, signer: Address) -> bool {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Approval(proposal_id, signer))
@@ -838,31 +970,38 @@ impl CredenceTreasury {
     }
 
     pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::pause(&e, &caller)
     }
 
     pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::unpause(&e, &caller)
     }
 
     pub fn is_paused(e: Env) -> bool {
+        bump_instance_ttl(&e);
         pausable::is_paused(&e)
     }
 
     pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        bump_instance_ttl(&e);
         pausable::set_pause_signer(&e, &admin, &signer, enabled)
     }
 
     pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        bump_instance_ttl(&e);
         pausable::set_pause_threshold(&e, &admin, threshold)
     }
 
     pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::approve_pause_proposal(&e, &signer, proposal_id)
     }
 
     /// Execute a pause proposal.
     pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::execute_pause_proposal(&e, proposal_id)
     }
 
@@ -879,6 +1018,7 @@ impl CredenceTreasury {
     /// `amount` must satisfy `0 < amount <= excess`. Any attempt to rescue more than
     /// the excess reverts with `InsufficientTreasuryBalance`.
     pub fn rescue_native(e: Env, admin: Address, to: Address, amount: i128) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         admin.require_auth();
 

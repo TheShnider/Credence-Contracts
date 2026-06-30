@@ -3,7 +3,8 @@ extern crate alloc;
 extern crate std;
 use crate::{CredenceBond, CredenceBondClient, DataKey};
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Env, IntoVal};
+use soroban_sdk::{Address, Env, IntoVal, Val};
+use soroban_sdk::{Address, Env, IntoVal, Val, Vec};
 
 fn setup(env: &Env) -> (CredenceBondClient<'_>, Address, Address, Address) {
     env.mock_all_auths();
@@ -29,6 +30,7 @@ fn invoke_transfer_admin(env: &Env, client: &CredenceBondClient<'_>, caller: &Ad
     let new_admin = Address::generate(env);
     let args: soroban_sdk::Vec<soroban_sdk::Val> =
         (caller.clone(), new_admin.clone()).into_val(env);
+    let args: soroban_sdk::Vec<soroban_sdk::Val> = (caller.clone(), new_admin.clone()).into_val(env);
     env.mock_auths(&[
         soroban_sdk::testutils::MockAuth {
             address: caller,
@@ -261,7 +263,7 @@ fn test_genuine_require_auth_enforcement() {
         invoke: &soroban_sdk::testutils::MockAuthInvoke {
             contract: &contract_id,
             fn_name: "initialize",
-            args: (&admin,).into_val(&env),
+            args: (&admin, &None::<Address>).into_val(&env),
             sub_invokes: &[],
         },
     }]);
@@ -286,6 +288,7 @@ fn test_transfer_admin_rotates_admin_and_rejects_old_admin() {
 
     let args: soroban_sdk::Vec<soroban_sdk::Val> =
         (admin.clone(), new_admin.clone()).into_val(&env);
+    let args: soroban_sdk::Vec<soroban_sdk::Val> = (admin.clone(), new_admin.clone()).into_val(&env);
     env.mock_auths(&[
         soroban_sdk::testutils::MockAuth {
             address: &admin,
@@ -358,7 +361,7 @@ fn test_admin_success() {
 
     client.set_early_exit_config(&admin, &treasury, &500_u32);
 
-    let config = client.describe_config();
+    let config = client.describe_config().unwrap();
     assert_eq!(config.early_exit_penalty_bps, Some(500));
 }
 
@@ -393,7 +396,7 @@ fn test_admin_as_attester_edge_case() {
     }]);
 
     client.set_early_exit_config(&admin, &treasury, &600_u32);
-    let config = client.describe_config();
+    let config = client.describe_config().unwrap();
     assert_eq!(config.early_exit_penalty_bps, Some(600));
 
     let non_admin_attester = Address::generate(&env);

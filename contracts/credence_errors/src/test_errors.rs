@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     extern crate std;
-    use crate::{ContractError, ErrorCategory, ErrorExt};
+    use crate::{ContractError, ErrorCategory, ErrorExt, Role};
     use std::vec::Vec;
 
     fn all_variants() -> Vec<ContractError> {
@@ -75,6 +75,9 @@ mod tests {
             ContractError::FlashLoanRepaymentFailed,
             ContractError::Overflow,
             ContractError::Underflow,
+            ContractError::DivisionByZero,
+            ContractError::BatchTooLarge,
+            ContractError::EmptyBatch,
         ]
     }
 
@@ -165,6 +168,13 @@ mod tests {
     fn test_codes_arithmetic() {
         assert_eq!(ContractError::Overflow as u32, 700);
         assert_eq!(ContractError::Underflow as u32, 701);
+        assert_eq!(ContractError::DivisionByZero as u32, 702);
+    }
+
+    #[test]
+    fn test_codes_batch() {
+        assert_eq!(ContractError::BatchTooLarge as u32, 227);
+        assert_eq!(ContractError::EmptyBatch as u32, 228);
     }
 
     // --- Category mapping tests ---
@@ -406,7 +416,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            69,
+            72,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -456,8 +466,8 @@ mod tests {
     }
 
     // authorization
-    fn mock_admin(is_admin: bool) -> Result<(), ContractError> {
-        if !is_admin {
+    fn mock_admin(role: Role) -> Result<(), ContractError> {
+        if role != Role::Admin {
             return Err(ContractError::NotAdmin);
         }
         Ok(())
@@ -493,8 +503,8 @@ mod tests {
 
     #[test]
     fn test_not_admin() {
-        assert_eq!(mock_admin(false), Err(ContractError::NotAdmin));
-        assert!(mock_admin(true).is_ok());
+        assert_eq!(mock_admin(Role::User), Err(ContractError::NotAdmin));
+        assert!(mock_admin(Role::Admin).is_ok());
     }
 
     #[test]
@@ -1140,6 +1150,7 @@ mod tests {
             ContractError::InvalidPauseAction => true,
             ContractError::InsufficientSignatures => true, // gather more sigs
             ContractError::AdminSuspended => true,         // wait for suspension
+            ContractError::AdminSuspended => true, // wait for suspension
 
             // Admin Transfer: state-step fixes.
             ContractError::NoPendingAdmin => true,
@@ -1171,6 +1182,11 @@ mod tests {
             ContractError::InvariantViolation => false, // post-write drift
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::DomainMismatch => false,     // payload binding
+            ContractError::BatchTooLarge => true,     // reduce batch size
+            ContractError::EmptyBatch => true,         // supply at least one item
+            ContractError::InvariantViolation => false, // post-write drift
+            ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
+            ContractError::DomainMismatch => false, // payload binding
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
@@ -1204,6 +1220,7 @@ mod tests {
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
+            ContractError::DelegationNotExpired => true, // wait for expiry then retry
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1216,9 +1233,13 @@ mod tests {
             ContractError::FlashLoanRepaymentFailed => false, // bad repayment
             ContractError::ProposalExpired => true,
 
+            // Registry pagination: caller can supply a valid cursor.
+            ContractError::CursorOutOfRange => true,
+
             // Arithmetic: code-level impossibility.
             ContractError::Overflow => false,
             ContractError::Underflow => false,
+            ContractError::DivisionByZero => false,
         }
     }
 
@@ -1272,6 +1293,8 @@ mod tests {
             ContractError::InvalidBondDuration,
             ContractError::InvalidNoticePeriod,
             ContractError::BondAlreadyExists,
+            ContractError::BatchTooLarge,
+            ContractError::EmptyBatch,
             ContractError::StorageCapReached,
             ContractError::TreasuryNotConfigured,
             ContractError::InvariantViolation,
@@ -1311,12 +1334,13 @@ mod tests {
             ContractError::InvalidFlashLoanCallback,
             ContractError::FlashLoanRepaymentFailed,
             ContractError::ProposalExpired,
+            ContractError::CursorOutOfRange,
             ContractError::Overflow,
             ContractError::Underflow,
         ];
         assert_eq!(
             cases.len(),
-            76,
+            78,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \

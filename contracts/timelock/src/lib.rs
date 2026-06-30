@@ -5,6 +5,14 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol,
 };
 
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
 pub const fn min_delay_seconds() -> u64 {
     86_400
 }
@@ -49,6 +57,7 @@ pub struct TimelockContract;
 impl TimelockContract {
     /// Initialize the timelock contract with the admin address.
     pub fn initialize(e: Env, admin: Address) {
+        bump_instance_ttl(&e);
         if e.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&e, ContractError::AlreadyInitialized);
         }
@@ -60,6 +69,7 @@ impl TimelockContract {
 
     /// Queue a new administrative operation to be executed after the delay.
     pub fn queue_operation(e: Env, proposer: Address, op_hash: BytesN<32>, delay: u64) -> u64 {
+        bump_instance_ttl(&e);
         proposer.require_auth();
         let admin: Address = e
             .storage()
@@ -124,6 +134,7 @@ impl TimelockContract {
 
     /// Execute a queued operation after its ETA has passed and before its grace period expires.
     pub fn execute_operation(e: Env, op_id: u64) {
+        bump_instance_ttl(&e);
         let mut op: QueuedOperation = e
             .storage()
             .instance()
@@ -166,6 +177,7 @@ impl TimelockContract {
 
     /// Cancel a pending operation in the queue. Only callable by admin.
     pub fn cancel_operation(e: Env, admin: Address, op_id: u64) {
+        bump_instance_ttl(&e);
         admin.require_auth();
         let stored_admin: Address = e
             .storage()
@@ -196,11 +208,13 @@ impl TimelockContract {
 
     /// Get details of a queued operation.
     pub fn get_operation(e: Env, op_id: u64) -> Option<QueuedOperation> {
+        bump_instance_ttl(&e);
         e.storage().instance().get(&DataKey::Operation(op_id))
     }
 
     /// Check if an operation hash has already been executed.
     pub fn is_operation_executed(e: Env, op_hash: BytesN<32>) -> bool {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::ExecutedOp(op_hash))
@@ -209,6 +223,7 @@ impl TimelockContract {
 
     /// Get the current admin address.
     pub fn get_admin(e: Env) -> Address {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Admin)
@@ -270,12 +285,12 @@ mod tests {
         assert_eq!(op.status, OperationStatus::Pending);
 
         // Before ETA: must fail
-        env.ledger().set_timestamp(op.eta - 1);
+        env.ledger().with_mut(|li| li.timestamp = op.eta - 1);
         let res = client.try_execute_operation(&op_id);
         assert!(res.is_err());
 
         // At ETA: must succeed
-        env.ledger().set_timestamp(op.eta);
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
         client.execute_operation(&op_id);
 
         let op = client.get_operation(&op_id).unwrap();
@@ -293,7 +308,7 @@ mod tests {
         let op = client.get_operation(&op_id).unwrap();
 
         // At expires_at: must succeed
-        env.ledger().set_timestamp(op.expires_at);
+        env.ledger().with_mut(|li| li.timestamp = op.expires_at);
         client.execute_operation(&op_id);
     }
 
@@ -307,9 +322,27 @@ mod tests {
         let op = client.get_operation(&op_id).unwrap();
 
         // At expires_at + 1: must fail
-        env.ledger().set_timestamp(op.expires_at + 1);
+        env.ledger().with_mut(|li| li.timestamp = op.expires_at + 1);
         let res = client.try_execute_operation(&op_id);
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_execute_operation_times_out_after_grace_period() {
+        let (env, client, admin) = setup_env();
+        let op_hash = BytesN::from_array(&env, &[6; 32]);
+        let delay = 86_400;
+
+        let op_id = client.queue_operation(&admin, &op_hash, &delay);
+        let op = client.get_operation(&op_id).unwrap();
+
+        env.ledger().with_mut(|li| li.timestamp = op.expires_at + 1);
+        let res = client.try_execute_operation(&op_id);
+        assert!(res.is_err());
+
+        let op = client.get_operation(&op_id).unwrap();
+        assert_eq!(op.status, OperationStatus::Pending);
+        assert!(!client.is_operation_executed(&op_hash));
     }
 
     #[test]
@@ -321,7 +354,7 @@ mod tests {
         let op_id = client.queue_operation(&admin, &op_hash, &delay);
         let op = client.get_operation(&op_id).unwrap();
 
-        env.ledger().set_timestamp(op.eta);
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
         client.execute_operation(&op_id);
 
         // Try to queue same hash again: must fail
@@ -342,7 +375,7 @@ mod tests {
         assert_eq!(op.status, OperationStatus::Cancelled);
 
         // Try to execute cancelled: must fail
-        env.ledger().set_timestamp(op.eta);
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
         let res = client.try_execute_operation(&op_id);
         assert!(res.is_err());
     }
@@ -355,5 +388,106 @@ mod tests {
 
         let res = client.try_queue_operation(&admin, &op_hash, &delay);
         assert!(res.is_err());
+    }
+
+    // --- is_ready boundary regression suite ---
+    //
+    // `is_ready(eta, now)` returns `true` iff `now >= eta`.
+    // `min_delay_seconds()` returns 86_400, interpreted as 1 second per ledger
+    // (i.e. the minimum queue delay is 86 400 ledgers / seconds = 24 hours).
+    //
+    // The table below covers every interesting u64 boundary:
+    //   eta == 0, now == 0, eta == u64::MAX, now == u64::MAX,
+    //   eta == now (tie-break), eta == now + 1 (one ledger early),
+    //   now == eta + 1 (one ledger late).
+    // No combination should panic; the comparison is total over u64.
+
+    #[test]
+    fn is_ready_boundary_eta_zero_now_zero() {
+        // eta == 0, now == 0  →  0 >= 0  →  true
+        assert!(is_ready(0, 0));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_zero_now_nonzero() {
+        // eta == 0, now > 0  →  always ready
+        assert!(is_ready(0, 1));
+        assert!(is_ready(0, u64::MAX));
+    }
+
+    #[test]
+    fn is_ready_boundary_now_zero_eta_nonzero() {
+        // now == 0, eta > 0  →  never ready
+        assert!(!is_ready(1, 0));
+        assert!(!is_ready(u64::MAX, 0));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_equals_now_exact_tie() {
+        // eta == now: the tie-break that decides whether an action executes
+        // on the exact ledger it becomes valid.  Must return true.
+        let t: u64 = 1_000_000;
+        assert!(is_ready(t, t));
+    }
+
+    #[test]
+    fn is_ready_boundary_now_one_before_eta() {
+        // now == eta - 1: one ledger before the ETA — must be false.
+        let eta: u64 = 500;
+        assert!(!is_ready(eta, eta - 1));
+    }
+
+    #[test]
+    fn is_ready_boundary_now_one_after_eta() {
+        // now == eta + 1: one ledger after the ETA — must be true.
+        let eta: u64 = 500;
+        assert!(is_ready(eta, eta + 1));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_max_now_max_minus_one() {
+        // Saturating upper bound: eta == u64::MAX, now == u64::MAX - 1  →  false
+        assert!(!is_ready(u64::MAX, u64::MAX - 1));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_max_now_max() {
+        // eta == u64::MAX, now == u64::MAX  →  true (tie-break at maximum value)
+        assert!(is_ready(u64::MAX, u64::MAX));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_max_minus_one_now_max() {
+        // now overflows past eta: now == u64::MAX > eta == u64::MAX - 1  →  true
+        assert!(is_ready(u64::MAX - 1, u64::MAX));
+    }
+
+    #[test]
+    fn is_ready_boundary_no_panic_exhaustive_pairs() {
+        // Spot-check a selection of extreme pairs to confirm no overflow/panic.
+        let pairs: &[(u64, u64)] = &[
+            (0, 0),
+            (0, u64::MAX),
+            (u64::MAX, 0),
+            (u64::MAX, u64::MAX),
+            (u64::MAX - 1, u64::MAX),
+            (u64::MAX, u64::MAX - 1),
+            (1, 0),
+            (0, 1),
+        ];
+        for &(eta, now) in pairs {
+            let _ = is_ready(eta, now); // must not panic
+        }
+    }
+
+    #[test]
+    fn min_delay_seconds_is_86400_one_second_per_ledger() {
+        // min_delay_seconds() must equal 86_400.
+        // Under the assumed 1-second-per-ledger cadence this corresponds to
+        // exactly 24 hours, the minimum window before a queued action may execute.
+        assert_eq!(min_delay_seconds(), 86_400);
+        // Verify the constant fits comfortably in u64 (no truncation).
+        let delay: u64 = min_delay_seconds();
+        assert_eq!(delay, 86_400_u64);
     }
 }
