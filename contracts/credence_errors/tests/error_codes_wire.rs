@@ -29,6 +29,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::InvalidPenaltyBps as u32, 211);
     assert_eq!(ContractError::LeverageExceeded as u32, 212);
     assert_eq!(ContractError::UnsupportedToken as u32, 213);
+    assert_eq!(ContractError::UnsupportedDecimals as u32, 229);
     assert_eq!(ContractError::InvalidBondAmount as u32, 214);
     assert_eq!(ContractError::InvalidBondDuration as u32, 215);
     assert_eq!(ContractError::InvalidNoticePeriod as u32, 216);

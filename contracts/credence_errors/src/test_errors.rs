@@ -31,6 +31,7 @@ mod tests {
             ContractError::InvalidPenaltyBps,
             ContractError::LeverageExceeded,
             ContractError::UnsupportedToken,
+            ContractError::UnsupportedDecimals,
             ContractError::InvalidBondAmount,
             ContractError::InvalidBondDuration,
             ContractError::InvalidNoticePeriod,
@@ -119,6 +120,7 @@ mod tests {
         assert_eq!(ContractError::InvalidPenaltyBps as u32, 211);
         assert_eq!(ContractError::LeverageExceeded as u32, 212);
         assert_eq!(ContractError::UnsupportedToken as u32, 213);
+        assert_eq!(ContractError::UnsupportedDecimals as u32, 229);
         assert_eq!(ContractError::InvalidBondAmount as u32, 214);
         assert_eq!(ContractError::InvalidBondDuration as u32, 215);
         assert_eq!(ContractError::InvalidNoticePeriod as u32, 216);
@@ -263,6 +265,10 @@ mod tests {
         );
         assert_eq!(
             ContractError::UnsupportedToken.category(),
+            ErrorCategory::Bond
+        );
+        assert_eq!(
+            ContractError::UnsupportedDecimals.category(),
             ErrorCategory::Bond
         );
         assert_eq!(
@@ -416,7 +422,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            72,
+            73,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1174,6 +1180,7 @@ mod tests {
             ContractError::InvalidPenaltyBps => true,
             ContractError::LeverageExceeded => true,
             ContractError::UnsupportedToken => true,
+            ContractError::UnsupportedDecimals => true,
             ContractError::InvalidBondAmount => true,
             ContractError::InvalidBondDuration => true,
             ContractError::InvalidNoticePeriod => true,
@@ -1283,6 +1290,7 @@ mod tests {
             ContractError::InvalidPenaltyBps,
             ContractError::LeverageExceeded,
             ContractError::UnsupportedToken,
+            ContractError::UnsupportedDecimals,
             ContractError::InvalidBondAmount,
             ContractError::InvalidBondDuration,
             ContractError::InvalidNoticePeriod,

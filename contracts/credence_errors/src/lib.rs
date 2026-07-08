@@ -239,6 +239,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     UnsupportedToken = 213,
 
+    /// Token decimals are outside the supported range used for normalization.
+    /// Triggered by token ingress when a configured token reports unsupported decimals.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UnsupportedDecimals = 229,
+
     /// Bond amount must be strictly positive (> 0).
     /// Triggered by: create_bond called with amount <= 0
     /// Contracts: bond
@@ -619,6 +625,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidPenaltyBps
             | ContractError::LeverageExceeded
             | ContractError::UnsupportedToken
+            | ContractError::UnsupportedDecimals
             | ContractError::InvalidBondAmount
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
@@ -718,6 +725,7 @@ impl ErrorExt for ContractError {
             ContractError::InvalidPenaltyBps => "Penalty bps must be in range 0-10000",
             ContractError::LeverageExceeded => "Resulting leverage exceeds the configured maximum",
             ContractError::UnsupportedToken => "Token transfer resulted in different amount than requested (fee-on-transfer tokens not supported)",
+            ContractError::UnsupportedDecimals => "Token decimals are outside the supported normalization range",
             ContractError::InvalidBondAmount => "Bond amount must be strictly positive (> 0)",
             ContractError::InvalidBondDuration => "Bond duration must be strictly positive (> 0)",
             ContractError::InvalidNoticePeriod => "Rolling-bond notice_period_duration must be > 0 and <= duration",

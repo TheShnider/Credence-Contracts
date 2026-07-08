@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 use crate::{BondTier, CredenceBond, CredenceBondClient};
+use credence_errors::ContractError;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
 
@@ -99,13 +100,15 @@ fn test_tier_silver_with_8_decimals() {
 }
 
 #[test]
-#[should_panic(expected = "token decimals 24 outside supported range [0, 18]")]
-fn test_24_decimals_panics() {
+fn test_unsupported_decimals_returns_typed_error() {
     let e = Env::default();
     let (client, _admin, identity, _token) = setup_with_decimals(&e, 24);
 
     let amount = 1_000_000_000;
-    client.create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    let result = client.try_create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), ContractError::UnsupportedDecimals);
 }
 
 #[test]

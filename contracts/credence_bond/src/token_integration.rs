@@ -116,8 +116,10 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
     }
 
     let contract = e.current_contract_address();
+    let token_addr = safe_token::get_token(e);
+    crate::normalization::validate_supported_decimals(e, &token_addr);
     // Construct the token client once; reuse for allowance check, balance reads, and transfer.
-    let token: TokenClient = safe_token::token_client(e);
+    let token: TokenClient = TokenClient::new(e, &token_addr);
 
     let allowance = token.allowance(owner, &contract);
     if allowance < amount {

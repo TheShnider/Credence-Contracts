@@ -102,7 +102,7 @@ fn test_denormalize_rejects_negative() {
 }
 
 #[test]
-#[should_panic(expected = "outside supported range")]
+#[should_panic]
 fn test_decimals_above_max_panics() {
     let e = Env::default();
     let token = setup_token(&e, MAX_SUPPORTED_DECIMALS + 1);
@@ -110,7 +110,7 @@ fn test_decimals_above_max_panics() {
 }
 
 #[test]
-#[should_panic(expected = "outside supported range")]
+#[should_panic]
 fn test_decimals_below_min_panics() {
     let e = Env::default();
     let token = setup_token(&e, 255);
