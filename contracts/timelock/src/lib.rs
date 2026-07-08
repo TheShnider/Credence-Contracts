@@ -91,7 +91,7 @@ impl TimelockContract {
             .get(&DataKey::ExecutedOp(op_hash.clone()))
             .unwrap_or(false)
         {
-            panic!("operation already executed");
+            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
         let op_id: u64 = e
@@ -160,7 +160,7 @@ impl TimelockContract {
             .get(&DataKey::ExecutedOp(op.op_hash.clone()))
             .unwrap_or(false)
         {
-            panic!("operation already executed");
+            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
         // Mark executed

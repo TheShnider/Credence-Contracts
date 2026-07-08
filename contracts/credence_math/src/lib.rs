@@ -77,10 +77,7 @@ pub fn div_i128(a: i128, b: i128, msg: &'static str) -> i128 {
 #[inline]
 #[must_use]
 pub fn ceil_div_i128(a: i128, b: i128, msg: &'static str) -> i128 {
-    a.checked_add(b - 1)
-        .unwrap_or_else(|| panic!("{msg}"))
-        .checked_div(b)
-        .unwrap_or_else(|| panic!("{msg}"))
+    a.checked_add(b - 1).expect(msg).checked_div(b).expect(msg)
 }
 
 /// Checked `i128` division returning a typed error instead of panicking.
@@ -176,7 +173,7 @@ pub fn ceil_div_checked_i128(a: i128, b: i128) -> Result<i128, ContractError> {
 #[must_use]
 pub fn mul_div_i128(a: i128, b: i128, denom: i128, mode: Rounding, msg: &'static str) -> i128 {
     if denom == 0 {
-        panic!("{msg}");
+        Option::<()>::None.expect(msg);
     }
 
     let negative = (a < 0) ^ (b < 0) ^ (denom < 0);
@@ -207,18 +204,18 @@ pub fn mul_div_i128(a: i128, b: i128, denom: i128, mode: Rounding, msg: &'static
     let negative_limit = U256::new((i128::MAX as u128) + 1);
     if negative {
         if rounded > negative_limit {
-            panic!("{msg}");
+            Option::<()>::None.expect(msg);
         }
         if rounded == negative_limit {
             i128::MIN
         } else {
-            -i128::try_from(rounded.as_u128()).unwrap_or_else(|_| panic!("{msg}"))
+            -i128::try_from(rounded.as_u128()).expect(msg)
         }
     } else {
         if rounded > positive_limit {
-            panic!("{msg}");
+            Option::<()>::None.expect(msg);
         }
-        i128::try_from(rounded.as_u128()).unwrap_or_else(|_| panic!("{msg}"))
+        i128::try_from(rounded.as_u128()).expect(msg)
     }
 }
 

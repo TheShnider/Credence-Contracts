@@ -389,6 +389,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     ContractCodeVerificationFailed = 407,
 
+    /// Bond contract does not support required interface.
+    /// Replaces: panic!("bond contract does not support required interface")
+    /// Contracts: registry
+    /// Wire-stable: do not renumber this error code.
+    UnsupportedInterface = 408,
     // --- Delegation (500-599) ---
     /// Delegation expiry timestamp must be in the future.
     /// Replaces: panic!("expiry must be in the future")
@@ -651,7 +656,8 @@ impl ErrorExt for ContractError {
             | ContractError::AlreadyDeactivated
             | ContractError::AlreadyActive
             | ContractError::InvalidContractAddress
-            | ContractError::ContractCodeVerificationFailed => ErrorCategory::Registry,
+            | ContractError::ContractCodeVerificationFailed
+            | ContractError::UnsupportedInterface => ErrorCategory::Registry,
 
             ContractError::ExpiryInPast
             | ContractError::DelegationNotFound
@@ -820,6 +826,7 @@ impl ErrorExt for ContractError {
             ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
+            ContractError::UnsupportedInterface => "Bond contract does not support required interface",
             ContractError::DivisionByZero => "Division by a zero denominator",
         }
     }
@@ -945,6 +952,8 @@ impl ErrorExt for ContractError {
             ContractError::FlashLoanRepaymentFailed => false, // principal+fee mismatch
 
             // --- Arithmetic (700-799): code-level impossibility. ---
+            ContractError::Overflow | ContractError::Underflow => false,
+            ContractError::UnsupportedInterface => false,
             ContractError::Overflow
             | ContractError::Underflow
             | ContractError::DivisionByZero => false,

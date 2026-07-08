@@ -42,6 +42,20 @@ fn test_expire_claims_no_expired() {
     env.mock_all_auths();
     let (_client, _admin, contract_id) = setup_with_contract(&env);
     let user = Address::generate(&env);
+    let _now = env.ledger().timestamp();
+
+    // Add a claim that expires far in the future
+    let _claim_id = claims::add_pending_claim(
+        &env,
+        &user,
+        ClaimType::VerifierReward,
+        1000,
+        1,
+        Some(Symbol::new(&env, "test1")),
+    );
+
+    // Sweep should find nothing expired
+    let pruned = claims::expire_claims_bounded(&env, &user, 50);
 
     // Uses contract entrypoint, so it already runs in-contract.
     // With an empty queue, there is nothing to prune.
@@ -67,6 +81,7 @@ fn test_expire_claims_all_expired() {
             ClaimType::VerifierReward,
             1000 + (i as i128),
             i as u64,
+            Some(Symbol::new(&env, &std::format!("claim_{}", i))),
             Some(Symbol::new(&env, &label)),
             1000,
             1,
@@ -113,6 +128,7 @@ fn test_expire_claims_all_expired() {
             ClaimType::VerifierReward,
             1000 + (i as i128),
             i as u64,
+            Some(Symbol::new(&env, &std::format!("claim_{}", i))),
             Some(Symbol::new(&env, &label)),
         );
     }
@@ -223,6 +239,7 @@ fn test_expire_claims_skips_no_expiry() {
             ClaimType::VerifierReward,
             1000 + (i as i128),
             i as u64,
+            Some(Symbol::new(&env, &std::format!("claim_{}", i))),
             Some(Symbol::new(&env, &label)),
             1000,
             1,
@@ -321,6 +338,7 @@ fn test_expire_claims_preserves_valid_claims_order() {
             ClaimType::VerifierReward,
             1000 + (i as i128),
             i as u64,
+            Some(Symbol::new(&env, &std::format!("claim_{}", i))),
             Some(Symbol::new(&env, &label)),
         );
     }
@@ -407,6 +425,28 @@ fn test_expire_claims_idempotent() {
     let (_client, _admin, contract_id) = setup_with_contract(&env);
     let user = Address::generate(&env);
 
+    // Add 10 claims
+    for i in 0..10 {
+        claims::add_pending_claim(
+            &env,
+            &user,
+            ClaimType::VerifierReward,
+            1000 + (i as i128),
+            i as u64,
+            Some(Symbol::new(&env, &std::format!("claim_{}", i))),
+        );
+    }
+
+    // Advance past expiry
+    env.ledger().set_timestamp(now + 31 * 24 * 60 * 60);
+
+    // First sweep removes all 10
+    let pruned1 = claims::expire_claims_bounded(&env, &user, 50);
+    assert_eq!(pruned1, 10);
+
+    // Second sweep should find nothing to remove
+    let pruned2 = claims::expire_claims_bounded(&env, &user, 50);
+    assert_eq!(pruned2, 0);
     let now = env.ledger().timestamp();
 
     as_bond(&env, &contract_id, || {
@@ -453,6 +493,7 @@ fn test_expire_claims_max_iter_zero_uses_default() {
             ClaimType::VerifierReward,
             1000 + (i as i128),
             i as u64,
+            Some(Symbol::new(&env, &std::format!("claim_{}", i))),
             Some(Symbol::new(&env, &label)),
         );
     }

@@ -1155,6 +1155,7 @@ mod tests {
             ContractError::ContractPaused => true, // wait for unpause
             ContractError::InvalidPauseAction => true,
             ContractError::InsufficientSignatures => true, // gather more sigs
+            ContractError::AdminSuspended => true,         // wait for suspension
             ContractError::AdminSuspended => true, // wait for suspension
 
             // Admin Transfer: state-step fixes.
@@ -1185,6 +1186,9 @@ mod tests {
             ContractError::InvalidBondDuration => true,
             ContractError::InvalidNoticePeriod => true,
             ContractError::BondAlreadyExists => true,
+            ContractError::InvariantViolation => false, // post-write drift
+            ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
+            ContractError::DomainMismatch => false,     // payload binding
             ContractError::BatchTooLarge => true,     // reduce batch size
             ContractError::EmptyBatch => true,         // supply at least one item
             ContractError::InvariantViolation => false, // post-write drift
@@ -1210,6 +1214,7 @@ mod tests {
             ContractError::AlreadyActive => true,
             ContractError::InvalidContractAddress => true,
             ContractError::ContractCodeVerificationFailed => true,
+            ContractError::UnsupportedInterface => false,
 
             // Delegation: state/caller fixes; fatal cases are scheme/crypto.
             ContractError::ExpiryInPast => true,
@@ -1221,6 +1226,7 @@ mod tests {
             ContractError::VerifierNotRegistered => true,
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
+            ContractError::DelegationNotExpired => true,    // wait for expiry then retry
             ContractError::DelegationNotExpired => true, // wait for expiry then retry
 
             // Treasury: state/caller fixes; fatal cases are callback failures.

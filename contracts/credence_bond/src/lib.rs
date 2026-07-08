@@ -362,6 +362,7 @@ pub enum DataKey {
     ClaimById(u64),
     /// Upgrade-authorization namespace, sub-keyed by [`UpgradeKey`].
     Upgrade(UpgradeKey),
+    BorrowFrozen,
     /// Reentrancy protection flag. Value: `bool`. When `true`, prevents
     /// external token calls from re-entering and double-spending.
     SettlingFlag,
@@ -554,7 +555,11 @@ impl CredenceBond {
             e.invoke_contract::<()>(
                 &registry,
                 &Symbol::new(&e, "register_trustless"),
-                soroban_sdk::vec![&e, admin.into_val(&e)],
+                soroban_sdk::vec![
+                    &e,
+                    e.current_contract_address().into_val(&e),
+                    admin.into_val(&e)
+                ],
             );
         }
     }
