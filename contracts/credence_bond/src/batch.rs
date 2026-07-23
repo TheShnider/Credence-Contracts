@@ -60,6 +60,8 @@ fn validate_batch_size(e: &Env, params_list: &Vec<BatchBondParams>) {
 /// * If any bond has invalid parameters (negative amount, duration overflow, etc.)
 /// * If params_list is empty
 pub fn validate_batch_bonds(e: &Env, params_list: &Vec<BatchBondParams>) {
+    crate::validation::require_non_empty_vec(e, params_list);
+
     validate_batch_size(e, params_list);
 
     let bond_start = e.ledger().timestamp();
