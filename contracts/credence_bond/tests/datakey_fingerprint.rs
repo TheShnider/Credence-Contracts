@@ -11,7 +11,7 @@
 
 use credence_bond::{DataKey, UpgradeKey};
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::xdr::ToXdr;
+use soroban_sdk::xdr::{FromXdr, ToXdr};
 use soroban_sdk::{Address, Bytes, Env};
 
 fn hex(bytes: &Bytes) -> String {
@@ -176,5 +176,50 @@ fn upgrade_key_fingerprints_are_unique() {
                 fps[i].0, fps[j].0
             );
         }
+    }
+}
+
+#[test]
+fn previous_snapshot_deserialises_with_new_spec() {
+    let env = Env::default();
+    
+    // Test DataKey
+    for line in EXPECTED_DATA_KEYS.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split(" = ").collect();
+        if parts.len() != 2 {
+            continue;
+        }
+        let hex_str = parts[1];
+
+        let bytes_vec: Vec<u8> = (0..hex_str.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex_str[i..i + 2], 16).unwrap())
+            .collect();
+
+        let bytes = Bytes::from_slice(&env, &bytes_vec);
+        let _ = DataKey::from_xdr(&env, &bytes).expect("Failed to deserialize DataKey from snapshot hex");
+    }
+
+    // Test UpgradeKey
+    for line in EXPECTED_UPGRADE_KEYS.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split(" = ").collect();
+        if parts.len() != 2 {
+            continue;
+        }
+        let hex_str = parts[1];
+
+        let bytes_vec: Vec<u8> = (0..hex_str.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex_str[i..i + 2], 16).unwrap())
+            .collect();
+
+        let bytes = Bytes::from_slice(&env, &bytes_vec);
+        let _ = UpgradeKey::from_xdr(&env, &bytes).expect("Failed to deserialize UpgradeKey from snapshot hex");
     }
 }
