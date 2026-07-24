@@ -138,25 +138,6 @@ pub fn require_non_empty_vec<T>(e: &Env, v: &Vec<T>) {
     }
 }
 
-/// Verify that a batch size is within valid bounds.
-///
-/// # Arguments
-/// * `e` - Contract environment
-/// * `size` - The current batch size
-/// * `max_size` - The maximum allowed batch size
-///
-/// # Panics
-/// * `ContractError::EmptyBatch` if `size == 0`
-/// * `ContractError::BatchTooLarge` if `size > max_size`
-pub fn verify_batch_size(e: &Env, size: u32, max_size: u32) {
-    if size == 0 {
-        panic_with_error!(e, ContractError::EmptyBatch);
-    }
-    if size > max_size {
-        panic_with_error!(e, ContractError::BatchTooLarge);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
