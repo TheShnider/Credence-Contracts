@@ -155,9 +155,6 @@ pub enum ContractError {
     /// Contracts: bond, delegation
     SignatureExpired = 109,
     /// The target admin is currently suspended (suspended_until > now).
-    /// Used by suspend_admin when `until_ts` is not strictly in the future,
-    /// and by callers that detect a suspended admin attempting a privileged
-    /// action.
     /// Contracts: admin
     /// Wire-stable: do not renumber this error code.
     AdminSuspended = 113,
@@ -320,6 +317,12 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
+
+    /// Idempotency key has already been used for this operation.
+    /// Triggered by: `idempotency::check_and_record` on a replayed salt.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    DuplicateIdempotencyKey = 231,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -485,7 +488,7 @@ pub enum ContractError {
     TargetMismatch = 220,
     ContractIdMismatch = 221,
 
-    // --- Admin Transfer (109-112) ---
+    // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
     NoPendingAdmin = 115,
 
@@ -502,15 +505,6 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmergencyDrainNotPermitted = 114,
-
-    /// Actor did not hold the required role at the given ledger timestamp.
-    ///
-    /// Raised by `require_role_at_ledger` when the actor's `assigned_at`
-    /// timestamp is later than the ledger timestamp under inspection, meaning
-    /// the role was not yet granted at the time of the delegated action.
-    /// Contracts: admin
-    /// Wire-stable: do not renumber this error code.
-    RoleNotHeldAtLedger = 114,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -670,12 +664,13 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
-            | ContractError::UnauthorizedToken => ErrorCategory::Bond,
+            | ContractError::UnauthorizedToken
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
+            | ContractError::DuplicateIdempotencyKey
             | ContractError::InvariantViolation => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -717,9 +712,9 @@ impl ErrorExt for ContractError {
             | ContractError::ProposalExpired
             | ContractError::SlippageExceeded => ErrorCategory::Treasury,
 
-            ContractError::Overflow
-            | ContractError::Underflow
-            | ContractError::DivisionByZero => ErrorCategory::Arithmetic,
+            ContractError::Overflow | ContractError::Underflow | ContractError::DivisionByZero => {
+                ErrorCategory::Arithmetic
+            }
             ContractError::NoPendingAdmin
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
@@ -781,8 +776,8 @@ impl ErrorExt for ContractError {
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
-            ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size constant",
-            ContractError::EmptyBatch => "Batch input is empty when at least one item is required",
+            ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
+            ContractError::EmptyBatch => "Batch input is empty; at least one item is required",
             ContractError::DuplicateAttestation => "Attestation already exists from this attester",
             ContractError::AttestationNotFound => "No attestation found for the given key",
             ContractError::AttestationAlreadyRevoked => "Attestation has already been revoked",
@@ -1002,6 +997,9 @@ impl ErrorExt for ContractError {
             ContractError::Overflow
             | ContractError::Underflow
             | ContractError::DivisionByZero => false,
+            ContractError::UnsupportedDecimals => false, // token not supported; caller must use a different token
+            ContractError::UnauthorizedToken => true,    // caller can switch to an accepted token
+            ContractError::EmergencyDrainNotPermitted => true, // pause contract and wait for timelock then retry
         }
     }
 }
