@@ -1073,6 +1073,9 @@ impl CredenceDelegation {
 #[cfg(test)]
 mod test_pausable;
 
+#[cfg(test)]
+mod test_pause_snapshots;
+
 // #[cfg(test)]
 // mod test_pause_signer_invariant;
 
